@@ -35,6 +35,31 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
+function CoinIcon({ symbol, size = 18 }: { symbol: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        className="coin-fallback"
+        style={{ width: size, height: size, fontSize: size * 0.5 }}
+        aria-hidden
+      >
+        {symbol.slice(0, 1)}
+      </span>
+    );
+  }
+  return (
+    <img
+      className="coin-icon"
+      src={`/coins/${symbol.toLowerCase()}.svg`}
+      width={size}
+      height={size}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function AddressView({ value }: { value: string }) {
   const [showQr, setShowQr] = useState(false);
   return (
@@ -330,6 +355,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
           <>
             <AddressView value={addresses.btc} />
             <p className="balance">
+              <CoinIcon symbol="BTC" />
               {balances ? `${(balances.btc_sats / 1e8).toFixed(8)} tBTC` : loading ? "..." : "—"}
             </p>
             {balances && balances.btc_pending_sats !== 0 && (
@@ -362,9 +388,11 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
           <>
             <AddressView value={addresses.sol} />
             <p className="balance">
+              <CoinIcon symbol="SOL" />
               {balances ? `${(balances.sol_lamports / 1e9).toFixed(4)} SOL` : loading ? "..." : "—"}
             </p>
             <p className="balance">
+              <CoinIcon symbol={balances?.stablecoin_label ?? "USDC"} />
               {balances ? `${balances.stablecoin.toFixed(2)} ${balances.stablecoin_label}` : loading ? "..." : "—"}
             </p>
             <SendForm
@@ -406,10 +434,12 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
               <div key={b.network} className="evm-net">
                 {b.tokens.map((t) => (
                   <p className="balance" key={t.symbol} style={{ margin: "0 0 0.4rem" }}>
+                    <CoinIcon symbol={t.symbol} />
                     {t.amount.toFixed(2)} {t.symbol} <span className="chain-tag">{b.network}</span>
                   </p>
                 ))}
                 <p className="balance" style={{ margin: 0 }}>
+                  <CoinIcon symbol={b.native_symbol} />
                   {b.native.toFixed(4)} {b.native_symbol} <span className="chain-tag">{b.network}</span>
                 </p>
                 <p className="hint" style={{ margin: "0.1rem 0 0" }}>

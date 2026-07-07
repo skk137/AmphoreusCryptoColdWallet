@@ -64,6 +64,12 @@ pub const EVM_CHAINS: &[EvmChain] = &[
                 contract: "0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39",
                 decimals: 18,
             },
+            EvmToken { symbol: "USDT", contract: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", decimals: 6 },
+            EvmToken { symbol: "DAI",  contract: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", decimals: 18 },
+            EvmToken { symbol: "WETH", contract: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", decimals: 18 },
+            EvmToken { symbol: "WBTC", contract: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", decimals: 8 },
+            EvmToken { symbol: "AAVE", contract: "0xD6DF932A45C0f255f85145f286eA0b292B21C90B", decimals: 18 },
+            EvmToken { symbol: "UNI",  contract: "0xb33EaAd8d922B1083446DC23f610c2567fB5180f", decimals: 18 },
         ],
     },
     EvmChain {

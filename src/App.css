@@ -170,6 +170,25 @@ button.primary:hover:not(:disabled) {
   margin: 0.4rem 0 0;
 }
 
+.coin-icon {
+  vertical-align: middle;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+}
+
+.coin-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: #1a120c;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .qr {
   margin-top: 0.7rem;
   padding: 0.7rem;
