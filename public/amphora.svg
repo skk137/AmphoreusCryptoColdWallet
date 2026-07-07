@@ -1,0 +1,14 @@
+<svg viewBox="0 0 64 96" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- Placeholder amphora logo — swap with your own art -->
+  <g stroke="#d98757" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round">
+    <!-- handles -->
+    <path d="M20 26 C10 28 10 42 20 44" />
+    <path d="M44 26 C54 28 54 42 44 44" />
+    <!-- body -->
+    <path d="M24 18 h16 l3 8 c6 10 6 30 -3 40 c-4 5 -12 5 -16 0 c-9 -10 -9 -30 -3 -40 z" fill="#d98757" fill-opacity="0.12"/>
+    <!-- neck rim -->
+    <path d="M22 18 h20" />
+    <!-- foot -->
+    <path d="M28 74 h8" />
+  </g>
+</svg>

@@ -1,0 +1,266 @@
+:root {
+  --bg: #14110f;
+  --surface: #1e1a17;
+  --surface-2: #262019;
+  --border: #332b23;
+  --text: #ece6df;
+  --text-dim: #9a8f83;
+  --accent: #d98757;
+  --accent-dim: #a8623b;
+  --danger: #e07a5f;
+  --ok: #7fae7a;
+
+  font-family: "Inter", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.container {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+/* ---- logo / wordmark ---- */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.wordmark {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+h1 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0.2rem 0;
+  text-align: center;
+}
+
+h2 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin: 0 0 0.6rem;
+}
+
+p {
+  margin: 0.3rem 0;
+}
+
+/* ---- inputs & buttons ---- */
+input,
+textarea,
+button {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.95rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 0.7rem 0.9rem;
+  color: var(--text);
+  background: var(--surface);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 500;
+  background: var(--surface-2);
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* opt-in loud primary via className="primary" */
+button.primary {
+  background: var(--accent);
+  color: #1a120c;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+}
+
+/* small secondary buttons (copy, cancel, inline actions) */
+.copy,
+.secondary {
+  width: auto;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.copy:hover:not(:disabled),
+.secondary:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+/* ---- cards ---- */
+.card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+}
+
+.address {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  word-break: break-all;
+  margin: 0.3rem 0;
+}
+
+.balance {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0.4rem 0 0;
+}
+
+.chain-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(217, 135, 87, 0.15);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---- helpers ---- */
+.badge {
+  font-size: 0.72rem;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  text-align: center;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.warning {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
+.mnemonic {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 1rem;
+  line-height: 1.9;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  word-spacing: 0.4em;
+  text-align: center;
+}
+
+.drive-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.send-form {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.send-form a {
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+/* ---- PIN strength bar ---- */
+.strength {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+}
+
+.strength-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.strength-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s, background 0.2s;
+}

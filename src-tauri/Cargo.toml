@@ -1,0 +1,50 @@
+[package]
+name = "cold-wallet"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "cold_wallet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bip39 = "2.2.2"
+aes-gcm = "0.11.0"
+argon2 = "0.5.3"
+zeroize = { version = "1.9.0", features = ["derive"] }
+rand = "0.8"
+anyhow = "1.0.103"
+sysinfo = "0.39.5"
+thiserror = "2.0.18"
+bitcoin = { version = "0.32.101", features = ["rand-std"] }
+solana-sdk = "4.0.1"
+spl-token = "9.0.0"
+spl-associated-token-account = "8.0.0"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "blocking", "native-tls"] }
+tokio = { version = "1.52.3", features = ["full"] }
+ed25519-dalek-bip32 = "0.3"
+ed25519-dalek = "2.2.0"
+base64 = "0.22.1"
+hex = "0.4.3"
+bs58 = "0.5.1"
+uuid = { version = "1.23.4", features = ["v4"] }
+tauri-plugin-dialog = "2.7.1"
+bincode = "1"
+solana-system-interface = { version = "3", features = ["bincode"] }
+spl-associated-token-account-interface = "2"
+sha3 = "0.12.0"
+
