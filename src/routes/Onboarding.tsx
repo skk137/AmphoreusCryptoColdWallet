@@ -43,7 +43,14 @@ function PinStrengthBar({ pin }: { pin: string }) {
     );
 }
 
-type Mode = "pick-drive" | "choose-action" | "create-pin" | "backup" | "import" | "unlock-pin";
+type Mode =
+  | "pick-drive"
+  | "choose-action"
+  | "create-pin"
+  | "backup"
+  | "verify-backup"
+  | "import"
+  | "unlock-pin";
 
 export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   const [mode, setMode] = useState<Mode>("pick-drive");
@@ -55,6 +62,35 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   const [importPhrase, setImportPhrase] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Seed-backup verification: 3 random word positions the user must retype.
+  const [verifyIdx, setVerifyIdx] = useState<number[]>([]);
+  const [verifyInputs, setVerifyInputs] = useState<Record<number, string>>({});
+
+  function startVerify() {
+    const words = phrase.trim().split(/\s+/);
+    // pick 3 distinct random indices
+    const idx = new Set<number>();
+    while (idx.size < 3 && idx.size < words.length) {
+      idx.add(Math.floor(Math.random() * words.length));
+    }
+    setVerifyIdx([...idx].sort((a, b) => a - b));
+    setVerifyInputs({});
+    setError("");
+    setMode("verify-backup");
+  }
+
+  function checkVerify() {
+    const words = phrase.trim().split(/\s+/);
+    const allOk = verifyIdx.every(
+      (i) => (verifyInputs[i] ?? "").trim().toLowerCase() === words[i]
+    );
+    if (!allOk) {
+      setError("Κάποια λέξη δεν ταιριάζει. Έλεγξε το backup σου.");
+      return;
+    }
+    setPhrase("");
+    onUnlocked();
+  }
 
   async function refreshDrives() {
     setError("");
@@ -215,14 +251,43 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
           Γράψε αυτή τη φράση σε χαρτί και φύλαξέ τη αλλού εκτός από το USB. Δεν θα ξαναφανεί.
         </p>
         <p className="mnemonic">{phrase}</p>
+        <button onClick={startVerify}>Την έγραψα, συνέχεια</button>
+      </main>
+    );
+  }
+
+  if (mode === "verify-backup") {
+    const words = phrase.trim().split(/\s+/);
+    return (
+      <main className="container">
+        <h1>Επιβεβαίωση backup</h1>
+        <p className="hint">
+          Για να σιγουρευτούμε ότι έγραψες σωστά τη φράση, πληκτρολόγησε τις λέξεις που ζητάει.
+        </p>
+        {verifyIdx.map((i) => (
+          <input
+            key={i}
+            placeholder={`Λέξη #${i + 1}`}
+            value={verifyInputs[i] ?? ""}
+            onChange={(e) => setVerifyInputs({ ...verifyInputs, [i]: e.target.value })}
+          />
+        ))}
+        <button onClick={checkVerify}>Επιβεβαίωση</button>
+        <button className="secondary" onClick={() => setMode("backup")}>
+          Πίσω να τη δω ξανά
+        </button>
         <button
+          className="secondary"
           onClick={() => {
             setPhrase("");
             onUnlocked();
           }}
         >
-          Την έγραψα, συνέχεια
+          Skip (μόνο για δοκιμή — μη το κάνεις με πραγματικά χρήματα)
         </button>
+        {error && <p className="error">{error}</p>}
+        {/* words referenced above via checkVerify closure */}
+        {words.length === 0 && <p className="error">Λείπει η φράση.</p>}
       </main>
     );
   }

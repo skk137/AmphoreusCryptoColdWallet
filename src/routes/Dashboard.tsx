@@ -5,9 +5,11 @@ import {
   Addresses,
   Balances,
   EvmBalance,
+  HistoryTx,
   estimateBtcFee,
   getAddresses,
   getBalances,
+  getHistory,
   lockWallet,
   sendBtc,
   sendEvm,
@@ -265,6 +267,81 @@ function EvmSendForm({ b, onSent }: { b: EvmBalance; onSent: () => void }) {
   );
 }
 
+function HistoryCard({
+  btc,
+  sol,
+  evm,
+  evmBalances,
+}: {
+  btc: string;
+  sol: string;
+  evm: string;
+  evmBalances: EvmBalance[];
+}) {
+  const [txs, setTxs] = useState<HistoryTx[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      setTxs(await getHistory(btc, sol));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const statusLabel = (s: string) =>
+    s === "confirmed" ? "✓ επιβεβαιωμένη" : s === "failed" ? "✗ απέτυχε" : "… εκκρεμεί";
+
+  return (
+    <div className="card">
+      <h2>Ιστορικό συναλλαγών</h2>
+      <button className="copy" onClick={load} disabled={loading}>
+        {loading ? "Φόρτωση..." : "Ανανέωση"}
+      </button>
+      {txs && txs.length === 0 && <p className="hint">Καμία συναλλαγή ακόμα.</p>}
+      {txs?.map((t) => (
+        <div key={t.txid} className="history-row">
+          <span className="chain-tag">{t.chain}</span>
+          <span className={`hist-status ${t.status}`}>{statusLabel(t.status)}</span>
+          <a
+            href={t.explorer_url}
+            target="_blank"
+            rel="noreferrer"
+            className="address"
+            style={{ fontSize: "0.7rem", margin: 0 }}
+          >
+            {t.txid.slice(0, 18)}…
+          </a>
+        </div>
+      ))}
+      <p className="hint" style={{ marginTop: "0.7rem" }}>
+        Πλήρες EVM ιστορικό στο explorer:{" "}
+        {evmBalances.map((b) => (
+          <a
+            key={b.network}
+            href={`${b.explorer_tx.replace("/tx/", "/address/")}${evm}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ marginRight: "0.6rem" }}
+          >
+            {b.network.split(" ")[0]}
+          </a>
+        ))}
+      </p>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
 export default function Dashboard({ onLocked }: { onLocked: () => void }) {
   const [addresses, setAddresses] = useState<Addresses | null>(null);
   const [balances, setBalances] = useState<Balances | null>(null);
@@ -272,6 +349,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lockProgress, setLockProgress] = useState(0); // 0 → 1 (full = lock)
+  const [tab, setTab] = useState<"home" | "history">("home");
 
   async function load() {
     setError("");
@@ -347,6 +425,32 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
   return (
     <main className="container">
       <Logo size={32} />
+
+      <nav className="tabs">
+        <button className={tab === "home" ? "tab active" : "tab"} onClick={() => setTab("home")}>
+          Home
+        </button>
+        <button
+          className={tab === "history" ? "tab active" : "tab"}
+          onClick={() => setTab("history")}
+        >
+          Transaction History
+        </button>
+      </nav>
+
+      {tab === "history" ? (
+        addresses && balances ? (
+          <HistoryCard
+            btc={addresses.btc}
+            sol={addresses.sol}
+            evm={addresses.evm}
+            evmBalances={balances.evm}
+          />
+        ) : (
+          <p className="hint">Φόρτωση...</p>
+        )
+      ) : (
+        <>
       {addresses && <p className="badge">{addresses.network} — δοκιμαστικά δίκτυα </p>}
 
       <div className="card">
@@ -460,14 +564,15 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
       <button disabled={loading} onClick={load}>
         {loading ? "Φόρτωση..." : "Ανανέωση balances"}
       </button>
+        </>
+      )}
+
       <button disabled={busy} onClick={handleLock}>
         {busy ? "..." : "Κλείδωμα"}
       </button>
 
       <div className="autolock" title={`Αυτόματο κλείδωμα σε ${lockMin}:${lockSec}`}>
-        <span className="autolock-label">
-          αυτόματο κλείδωμα σε {lockMin}:{lockSec}
-        </span>
+        <span className="autolock-label">κλείδωμα σε {lockMin}:{lockSec}</span>
         <div className="autolock-bar">
           <div className="autolock-fill" style={{ width: `${lockProgress * 100}%` }} />
         </div>

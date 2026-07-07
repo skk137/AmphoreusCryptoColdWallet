@@ -110,6 +110,97 @@ pub fn find_evm_chain(name: &str) -> Option<&'static EvmChain> {
 }
 
 #[derive(Serialize)]
+pub struct HistoryTx {
+    pub chain: String,
+    pub txid: String,
+    pub status: String, // "confirmed" | "pending" | "failed"
+    pub explorer_url: String,
+}
+
+/// Recent transaction history for the BTC and SOL addresses, straight from the
+/// public explorer/RPC endpoints (no API key, same sources as balances). EVM
+/// history isn't included — raw RPC can't list by address; the UI links out to
+/// the block explorer instead.
+#[tauri::command]
+pub async fn get_history(
+    btc_address: String,
+    sol_address: String,
+) -> Result<Vec<HistoryTx>, String> {
+    inner_get_history(&btc_address, &sol_address)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn inner_get_history(btc: &str, sol: &str) -> Result<Vec<HistoryTx>> {
+    let client = reqwest::Client::new();
+    let mut out = Vec::new();
+    if let Ok(mut txs) = fetch_btc_history(&client, btc).await {
+        out.append(&mut txs);
+    }
+    if let Ok(mut txs) = fetch_sol_history(&client, sol).await {
+        out.append(&mut txs);
+    }
+    Ok(out)
+}
+
+async fn fetch_btc_history(client: &reqwest::Client, addr: &str) -> Result<Vec<HistoryTx>> {
+    let arr: serde_json::Value = client
+        .get(format!("{ESPLORA_BASE}/address/{addr}/txs"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let mut v = Vec::new();
+    if let Some(txs) = arr.as_array() {
+        for tx in txs.iter().take(10) {
+            let txid = tx["txid"].as_str().unwrap_or("").to_string();
+            let confirmed = tx["status"]["confirmed"].as_bool().unwrap_or(false);
+            v.push(HistoryTx {
+                chain: "Bitcoin".into(),
+                explorer_url: format!("https://blockstream.info/testnet/tx/{txid}"),
+                status: if confirmed { "confirmed" } else { "pending" }.into(),
+                txid,
+            });
+        }
+    }
+    Ok(v)
+}
+
+async fn fetch_sol_history(client: &reqwest::Client, addr: &str) -> Result<Vec<HistoryTx>> {
+    let resp: serde_json::Value = client
+        .post(SOLANA_RPC)
+        .json(&json!({
+            "jsonrpc": "2.0", "id": 1,
+            "method": "getSignaturesForAddress",
+            "params": [addr, { "limit": 10 }]
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let mut v = Vec::new();
+    if let Some(arr) = resp["result"].as_array() {
+        for s in arr {
+            let sig = s["signature"].as_str().unwrap_or("").to_string();
+            let status = if !s["err"].is_null() {
+                "failed"
+            } else if s["confirmationStatus"].as_str() == Some("finalized") {
+                "confirmed"
+            } else {
+                "pending"
+            };
+            v.push(HistoryTx {
+                chain: "Solana".into(),
+                explorer_url: format!("https://explorer.solana.com/tx/{sig}?cluster=devnet"),
+                status: status.into(),
+                txid: sig,
+            });
+        }
+    }
+    Ok(v)
+}
+
+#[derive(Serialize)]
 pub struct TokenBalance {
     pub symbol: String,
     pub amount: f64,

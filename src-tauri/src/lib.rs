@@ -21,6 +21,7 @@ pub fn run() {
             commands::wallet::wallet_source_present,
             commands::chain::get_addresses,
             commands::chain::get_balances,
+            commands::chain::get_history,
             commands::send::send_btc,
             commands::send::send_sol,
             commands::send::send_usdc,

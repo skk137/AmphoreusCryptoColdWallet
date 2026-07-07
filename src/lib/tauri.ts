@@ -82,6 +82,17 @@ export function getBalances(
   return invoke("get_balances", { btcAddress, solAddress, evmAddress });
 }
 
+export interface HistoryTx {
+  chain: string;
+  txid: string;
+  status: string; // "confirmed" | "pending" | "failed"
+  explorer_url: string;
+}
+
+export function getHistory(btcAddress: string, solAddress: string): Promise<HistoryTx[]> {
+  return invoke("get_history", { btcAddress, solAddress });
+}
+
 export function sendBtc(to: string, amountSats: number): Promise<string> {
   return invoke("send_btc", { to, amountSats });
 }
