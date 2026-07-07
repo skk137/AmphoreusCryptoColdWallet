@@ -60,16 +60,21 @@ pub async fn send_btc(
         .map_err(|e| e.to_string())
 }
 
-async fn inner_send_btc(xpriv: Xpriv, from: Address, to: &str, amount: u64) -> Result<String> {
+/// Result of coin selection: the chosen inputs, the miner fee, and the total
+/// input value. Shared by the real send and the fee-preview command so both
+/// agree on the number.
+struct Selection {
+    selected: Vec<Utxo>,
+    fee: u64,
+    total_in: u64,
+}
+
+/// Fetches UTXOs + the current fee rate and does largest-first coin selection
+/// for a 2-output (recipient + change) P2WPKH spend. Pure read — no signing.
+async fn select_utxos(client: &reqwest::Client, from: &Address, amount: u64) -> Result<Selection> {
     if amount < DUST_SATS {
         bail!("το ποσό είναι πολύ μικρό (ελάχιστο {DUST_SATS} sats)");
     }
-    let to_addr = Address::from_str(to)
-        .map_err(|_| anyhow!("μη έγκυρη διεύθυνση Bitcoin"))?
-        .require_network(BTC_NETWORK)
-        .map_err(|_| anyhow!("η διεύθυνση δεν είναι testnet διεύθυνση"))?;
-
-    let client = reqwest::Client::new();
 
     let utxos: Vec<Utxo> = client
         .get(format!("{ESPLORA_BASE}/address/{from}/utxo"))
@@ -99,7 +104,6 @@ async fn inner_send_btc(xpriv: Xpriv, from: Address, to: &str, amount: u64) -> R
     let fee_for =
         |n_in: usize, n_out: usize| ((11.0 + 68.0 * n_in as f64 + 31.0 * n_out as f64) * fee_rate).ceil() as u64;
 
-    // Largest-first coin selection.
     let mut candidates = utxos;
     candidates.sort_by(|a, b| b.value.cmp(&a.value));
     let mut selected: Vec<Utxo> = Vec::new();
@@ -118,7 +122,59 @@ async fn inner_send_btc(xpriv: Xpriv, from: Address, to: &str, amount: u64) -> R
             amount + fee
         );
     }
-        
+    Ok(Selection {
+        selected,
+        fee,
+        total_in: total,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct BtcFeeEstimate {
+    pub fee_sats: u64,
+    pub total_sats: u64,
+}
+
+/// Estimates the miner fee for a BTC send without signing or broadcasting, so
+/// the UI can show it in the confirmation screen.
+#[tauri::command]
+pub async fn estimate_btc_fee(
+    state: State<'_, AppState>,
+    amount_sats: u64,
+) -> Result<BtcFeeEstimate, String> {
+    let from = {
+        let guard = state.0.lock().expect("wallet state mutex poisoned");
+        let unlocked = guard.as_ref().ok_or("wallet is locked")?;
+        let seed_bytes = seed::phrase_to_seed(&unlocked.mnemonic, "").map_err(|e| e.to_string())?;
+        let xpriv = derivation::derive_bitcoin_xpriv(&seed_bytes, BTC_NETWORK, 0)
+            .map_err(|e| e.to_string())?;
+        let secp = Secp256k1::new();
+        let pubkey = PublicKey::from_secret_key(&secp, &xpriv.private_key);
+        Address::p2wpkh(&CompressedPublicKey(pubkey), BTC_NETWORK)
+    };
+    let client = reqwest::Client::new();
+    let sel = select_utxos(&client, &from, amount_sats)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(BtcFeeEstimate {
+        fee_sats: sel.fee,
+        total_sats: amount_sats + sel.fee,
+    })
+}
+
+async fn inner_send_btc(xpriv: Xpriv, from: Address, to: &str, amount: u64) -> Result<String> {
+    let to_addr = Address::from_str(to)
+        .map_err(|_| anyhow!("μη έγκυρη διεύθυνση Bitcoin"))?
+        .require_network(BTC_NETWORK)
+        .map_err(|_| anyhow!("η διεύθυνση δεν είναι testnet διεύθυνση"))?;
+
+    let client = reqwest::Client::new();
+    let Selection {
+        selected,
+        fee,
+        total_in: total,
+    } = select_utxos(&client, &from, amount).await?;
+
     let change = total - amount - fee;
     let mut outputs = vec![TxOut {
         value: Amount::from_sat(amount),

@@ -37,6 +37,10 @@ export function walletStatus(): Promise<boolean> {
   return invoke("wallet_status");
 }
 
+export function walletSourcePresent(): Promise<boolean> {
+  return invoke("wallet_source_present");
+}
+
 export interface Addresses {
   btc: string;
   sol: string;
@@ -44,9 +48,16 @@ export interface Addresses {
   network: string;
 }
 
+export interface TokenBalance {
+  symbol: string;
+  amount: number;
+}
+
 export interface EvmBalance {
   network: string;
-  usdc: number;
+  tokens: TokenBalance[];
+  native: number;
+  native_symbol: string;
   explorer_tx: string;
 }
 
@@ -81,4 +92,18 @@ export function sendSol(to: string, amountLamports: number): Promise<string> {
 
 export function sendUsdc(to: string, amountBase: number): Promise<string> {
   return invoke("send_usdc", { to, amountBase });
+}
+
+// asset = "native" or a token symbol; amount is a human decimal string.
+export function sendEvm(network: string, asset: string, to: string, amount: string): Promise<string> {
+  return invoke("send_evm", { network, asset, to, amount });
+}
+
+export interface BtcFeeEstimate {
+  fee_sats: number;
+  total_sats: number;
+}
+
+export function estimateBtcFee(amountSats: number): Promise<BtcFeeEstimate> {
+  return invoke("estimate_btc_fee", { amountSats });
 }

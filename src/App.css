@@ -170,6 +170,26 @@ button.primary:hover:not(:disabled) {
   margin: 0.4rem 0 0;
 }
 
+.qr {
+  margin-top: 0.7rem;
+  padding: 0.7rem;
+  background: var(--surface-2);
+  border-radius: 10px;
+  display: inline-block;
+  line-height: 0;
+}
+
+.evm-net {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
+.evm-net:first-of-type {
+  border-top: none;
+  padding-top: 0.2rem;
+}
+
 .chain-tag {
   font-size: 0.65rem;
   font-weight: 600;
@@ -263,4 +283,38 @@ button.primary:hover:not(:disabled) {
   height: 100%;
   border-radius: 3px;
   transition: width 0.2s, background 0.2s;
+}
+
+/* ---- auto-lock countdown (fixed, minimal, bottom of window) ---- */
+.autolock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding-bottom: 0.15rem;
+  pointer-events: none;
+}
+
+.autolock-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.autolock-bar {
+  width: 100%;
+  height: 2px;
+  background: var(--surface-2);
+}
+
+.autolock-fill {
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.8;
+  transition: width 1s linear;
 }

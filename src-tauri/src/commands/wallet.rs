@@ -106,6 +106,20 @@ pub fn wallet_status(state: State<AppState>) -> bool {
     state.0.lock().expect("wallet state mutex poisoned").is_some()
 }
 
+/// True if the storage that holds the encrypted seed (the USB drive, or the
+/// chosen local folder) is still accessible. The frontend polls this and
+/// auto-locks the moment the USB is unplugged. Returns true when already
+/// locked — there's nothing to guard. Using file existence (rather than a
+/// "removable drive" check) means it works for the local-folder dev mode too.
+#[tauri::command]
+pub fn wallet_source_present(state: State<AppState>) -> bool {
+    let guard = state.0.lock().expect("wallet state mutex poisoned");
+    match guard.as_ref() {
+        Some(w) => seed_file_path(&w.usb_mount_point).exists(),
+        None => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

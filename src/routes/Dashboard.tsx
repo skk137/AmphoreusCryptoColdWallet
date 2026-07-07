@@ -1,15 +1,23 @@
 import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import Logo from "../components/Logo";
 import {
   Addresses,
   Balances,
+  EvmBalance,
+  estimateBtcFee,
   getAddresses,
   getBalances,
   lockWallet,
   sendBtc,
+  sendEvm,
   sendSol,
   sendUsdc,
+  walletSourcePresent,
 } from "../lib/tauri";
+
+// Auto-lock after this much inactivity. Any mouse/keyboard activity resets it.
+const AUTO_LOCK_MS = 15 * 60 * 1000;
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -27,11 +35,32 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
+function AddressView({ value }: { value: string }) {
+  const [showQr, setShowQr] = useState(false);
+  return (
+    <div>
+      <p className="address">{value}</p>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <CopyButton value={value} />
+        <button className="copy" onClick={() => setShowQr((v) => !v)}>
+          {showQr ? "Κρύψε QR" : "QR"}
+        </button>
+      </div>
+      {showQr && (
+        <div className="qr">
+          <QRCodeSVG value={value} size={140} bgColor="transparent" fgColor="#ece6df" level="M" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SendForm({
   label,
   unit,
   decimals,
   explorerBase,
+  estimateFee,
   onSend,
   onSent,
 }: {
@@ -39,6 +68,7 @@ function SendForm({
   unit: string;
   decimals: number;
   explorerBase: string;
+  estimateFee?: (to: string, baseUnits: number) => Promise<string>;
   onSend: (to: string, baseUnits: number) => Promise<string>;
   onSent: () => void;
 }) {
@@ -46,6 +76,7 @@ function SendForm({
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [sending, setSending] = useState(false);
+  const [estimating, setEstimating] = useState(false);
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
 
@@ -62,8 +93,22 @@ function SendForm({
       return;
     }
     const baseUnits = Math.round(parsed * Math.pow(10, decimals));
+
+    // Fee preview before the confirmation dialog.
+    let feeLine = "";
+    if (estimateFee) {
+      setEstimating(true);
+      try {
+        feeLine = `\nΕκτιμώμενο fee: ${await estimateFee(to.trim(), baseUnits)}\n`;
+      } catch (e) {
+        feeLine = `\n(δεν υπολογίστηκε το fee: ${e})\n`;
+      } finally {
+        setEstimating(false);
+      }
+    }
+
     const ok = window.confirm(
-      `Επιβεβαίωση αποστολής:\n\n${parsed} ${unit}\n\nπρος: ${to.trim()}\n\nΗ συναλλαγή δεν μπορεί να ανακληθεί. Συνέχεια;`
+      `Επιβεβαίωση αποστολής:\n\n${parsed} ${unit}\nπρος: ${to.trim()}\n${feeLine}\nΗ συναλλαγή δεν μπορεί να ανακληθεί. Συνέχεια;`
     );
     if (!ok) return;
     setSending(true);
@@ -100,8 +145,8 @@ function SendForm({
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
       />
-      <button disabled={sending} onClick={handleSend}>
-        {sending ? "Αποστολή..." : `Αποστολή ${unit}`}
+      <button disabled={sending || estimating} onClick={handleSend}>
+        {estimating ? "Υπολογισμός fee..." : sending ? "Αποστολή..." : `Αποστολή ${unit}`}
       </button>
       <button className="copy" onClick={() => setOpen(false)}>
         Άκυρο
@@ -120,12 +165,88 @@ function SendForm({
   );
 }
 
+function EvmSendForm({ b, onSent }: { b: EvmBalance; onSent: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [asset, setAsset] = useState("native"); // "native" | token symbol
+  const [to, setTo] = useState("");
+  const [amount, setAmount] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState("");
+  const [error, setError] = useState("");
+
+  const assetLabel = asset === "native" ? b.native_symbol : asset;
+
+  async function handleSend() {
+    setError("");
+    setResult("");
+    const amt = amount.trim().replace(",", ".");
+    if (!to.trim()) return setError("Συμπλήρωσε τη διεύθυνση παραλήπτη.");
+    if (!amt || parseFloat(amt) <= 0) return setError("Μη έγκυρο ποσό.");
+    const ok = window.confirm(
+      `Επιβεβαίωση αποστολής:\n\n${amt} ${assetLabel}\nδίκτυο: ${b.network}\nπρος: ${to.trim()}\n\nΤο fee πληρώνεται σε ${b.native_symbol} (gas).\nΗ συναλλαγή δεν ανακαλείται. Συνέχεια;`
+    );
+    if (!ok) return;
+    setSending(true);
+    try {
+      const hash = await sendEvm(b.network, asset, to.trim(), amt);
+      setResult(hash);
+      setTo("");
+      setAmount("");
+      onSent();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="copy" onClick={() => setOpen(true)}>
+        Αποστολή ({b.network})
+      </button>
+    );
+  }
+
+  return (
+    <div className="send-form">
+      <select value={asset} onChange={(e) => setAsset(e.target.value)}>
+        <option value="native">{b.native_symbol} (native)</option>
+        {b.tokens.map((t) => (
+          <option key={t.symbol} value={t.symbol}>
+            {t.symbol}
+          </option>
+        ))}
+      </select>
+      <input placeholder="Διεύθυνση παραλήπτη (0x...)" value={to} onChange={(e) => setTo(e.target.value)} />
+      <input placeholder={`Ποσό σε ${assetLabel}`} value={amount} onChange={(e) => setAmount(e.target.value)} />
+      <button disabled={sending} onClick={handleSend}>
+        {sending ? "Αποστολή..." : `Αποστολή ${assetLabel}`}
+      </button>
+      <button className="copy" onClick={() => setOpen(false)}>
+        Άκυρο
+      </button>
+      {result && (
+        <p className="hint">
+          Εστάλη! <span className="address">{result}</span>
+          <br />
+          <a href={`${b.explorer_tx}${result}`} target="_blank" rel="noreferrer">
+            Προβολή στο explorer
+          </a>
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
 export default function Dashboard({ onLocked }: { onLocked: () => void }) {
   const [addresses, setAddresses] = useState<Addresses | null>(null);
   const [balances, setBalances] = useState<Balances | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [lockProgress, setLockProgress] = useState(0); // 0 → 1 (full = lock)
 
   async function load() {
     setError("");
@@ -145,6 +266,45 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
     load();
   }, []);
 
+  // Auto-lock: idle timeout (bar fills over 15 min of inactivity) + USB removal.
+  useEffect(() => {
+    let lastActivity = Date.now();
+    let locked = false;
+    const bump = () => (lastActivity = Date.now());
+    const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, bump));
+
+    const lockNow = async () => {
+      if (locked) return;
+      locked = true;
+      await lockWallet();
+      onLocked();
+    };
+
+    let tick = 0;
+    const interval = setInterval(async () => {
+      const elapsed = Date.now() - lastActivity;
+      setLockProgress(Math.min(1, elapsed / AUTO_LOCK_MS));
+      if (elapsed >= AUTO_LOCK_MS) {
+        await lockNow();
+        return;
+      }
+      // Check every ~3s whether the USB/source is still plugged in.
+      if (tick++ % 3 === 0) {
+        try {
+          if (!(await walletSourcePresent())) await lockNow();
+        } catch {
+          /* transient — ignore */
+        }
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+      events.forEach((e) => window.removeEventListener(e, bump));
+    };
+  }, []);
+
   async function handleLock() {
     setBusy(true);
     try {
@@ -155,6 +315,10 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
     }
   }
 
+  const lockSecondsLeft = Math.max(0, Math.ceil((AUTO_LOCK_MS * (1 - lockProgress)) / 1000));
+  const lockMin = Math.floor(lockSecondsLeft / 60);
+  const lockSec = String(lockSecondsLeft % 60).padStart(2, "0");
+
   return (
     <main className="container">
       <Logo size={32} />
@@ -164,8 +328,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
         <h2>Bitcoin (testnet)</h2>
         {addresses ? (
           <>
-            <p className="address">{addresses.btc}</p>
-            <CopyButton value={addresses.btc} />
+            <AddressView value={addresses.btc} />
             <p className="balance">
               {balances ? `${(balances.btc_sats / 1e8).toFixed(8)} tBTC` : loading ? "..." : "—"}
             </p>
@@ -180,6 +343,10 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
               unit="tBTC"
               decimals={8}
               explorerBase="https://blockstream.info/testnet/tx/"
+              estimateFee={async (_to, sats) => {
+                const e = await estimateBtcFee(sats);
+                return `${(e.fee_sats / 1e8).toFixed(8)} tBTC · σύνολο ${(e.total_sats / 1e8).toFixed(8)} tBTC`;
+              }}
               onSend={(to, sats) => sendBtc(to, sats)}
               onSent={load}
             />
@@ -193,8 +360,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
         <h2>Solana (devnet)</h2>
         {addresses ? (
           <>
-            <p className="address">{addresses.sol}</p>
-            <CopyButton value={addresses.sol} />
+            <AddressView value={addresses.sol} />
             <p className="balance">
               {balances ? `${(balances.sol_lamports / 1e9).toFixed(4)} SOL` : loading ? "..." : "—"}
             </p>
@@ -206,6 +372,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
               unit="SOL"
               decimals={9}
               explorerBase="https://explorer.solana.com/tx/"
+              estimateFee={async () => "~0.000005 SOL (fee δικτύου)"}
               onSend={(to, lamports) => sendSol(to, lamports)}
               onSent={load}
             />
@@ -214,6 +381,9 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
               unit={balances?.stablecoin_label ?? "USDC"}
               decimals={6}
               explorerBase="https://explorer.solana.com/tx/"
+              estimateFee={async () =>
+                "~0.000005 SOL + ~0.002 SOL αν ο παραλήπτης δεν έχει ήδη λογαριασμό USDC"
+              }
               onSend={(to, base) => sendUsdc(to, base)}
               onSent={load}
             />
@@ -227,16 +397,26 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
         <h2>EVM (Polygon / Arbitrum)</h2>
         {addresses ? (
           <>
-            <p className="address">{addresses.evm}</p>
-            <CopyButton value={addresses.evm} />
+            <AddressView value={addresses.evm} />
             <p className="hint">
               Ίδια διεύθυνση για όλα τα EVM δίκτυα. Το USDC κάθε δικτύου είναι ξεχωριστό — πρόσεξε
               πάντα σε ποιο chain λαμβάνεις/στέλνεις.
             </p>
             {balances?.evm.map((b) => (
-              <p className="balance" key={b.network}>
-                {b.usdc.toFixed(2)} USDC <span className="chain-tag">{b.network}</span>
-              </p>
+              <div key={b.network} className="evm-net">
+                {b.tokens.map((t) => (
+                  <p className="balance" key={t.symbol} style={{ margin: "0 0 0.4rem" }}>
+                    {t.amount.toFixed(2)} {t.symbol} <span className="chain-tag">{b.network}</span>
+                  </p>
+                ))}
+                <p className="balance" style={{ margin: 0 }}>
+                  {b.native.toFixed(4)} {b.native_symbol} <span className="chain-tag">{b.network}</span>
+                </p>
+                <p className="hint" style={{ margin: "0.1rem 0 0" }}>
+                  {b.native_symbol} = native νόμισμα, πληρώνει τα fees
+                </p>
+                <EvmSendForm b={b} onSent={load} />
+              </div>
             ))}
             {!balances && <p>{loading ? "Φόρτωση..." : "—"}</p>}
           </>
@@ -253,6 +433,15 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
       <button disabled={busy} onClick={handleLock}>
         {busy ? "..." : "Κλείδωμα"}
       </button>
+
+      <div className="autolock" title={`Αυτόματο κλείδωμα σε ${lockMin}:${lockSec}`}>
+        <span className="autolock-label">
+          αυτόματο κλείδωμα σε {lockMin}:{lockSec}
+        </span>
+        <div className="autolock-bar">
+          <div className="autolock-fill" style={{ width: `${lockProgress * 100}%` }} />
+        </div>
+      </div>
     </main>
   );
 }

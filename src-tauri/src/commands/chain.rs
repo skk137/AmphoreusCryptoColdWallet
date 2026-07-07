@@ -22,28 +22,72 @@ pub const STABLECOIN_DECIMALS: u8 = 6;
 /// An EVM chain we track USDC on. All share one wallet address; only the RPC
 /// endpoint and USDC contract differ. Testnets for now — swap the four fields
 /// per network to go mainnet.
+/// An ERC-20 token we track on an EVM chain.
+pub struct EvmToken {
+    pub symbol: &'static str,
+    pub contract: &'static str,
+    pub decimals: u32,
+}
+
 pub struct EvmChain {
     pub name: &'static str,
     pub rpc: &'static str,
-    pub usdc_contract: &'static str,
-    pub usdc_decimals: u32,
     pub explorer_tx: &'static str,
+    /// EIP-155 chain id, used when signing so a tx can't be replayed on
+    /// another network.
+    pub chain_id: u64,
+    /// Native gas token symbol (POL on Polygon, ETH on Arbitrum). Fees are
+    /// paid in this.
+    pub native_symbol: &'static str,
+    /// Native token decimals — always 18 on EVM chains.
+    pub native_decimals: u32,
+    /// ERC-20 tokens to display balances for on this chain.
+    pub tokens: &'static [EvmToken],
 }
 
 pub const EVM_CHAINS: &[EvmChain] = &[
     EvmChain {
         name: "Polygon Network",
         rpc: "https://polygon-amoy-bor-rpc.publicnode.com",
-        usdc_contract: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
-        usdc_decimals: 6,
         explorer_tx: "https://amoy.polygonscan.com/tx/",
+        chain_id: 80002,
+        native_symbol: "POL",
+        native_decimals: 18,
+        tokens: &[
+            EvmToken {
+                symbol: "USDC",
+                contract: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+                decimals: 6,
+            },
+            EvmToken {
+                symbol: "LINK",
+                contract: "0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39",
+                decimals: 18,
+            },
+        ],
     },
     EvmChain {
         name: "Arbitrum Network",
         rpc: "https://sepolia-rollup.arbitrum.io/rpc",
-        usdc_contract: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-        usdc_decimals: 6,
         explorer_tx: "https://sepolia.arbiscan.io/tx/",
+        chain_id: 421614,
+        native_symbol: "ETH",
+        native_decimals: 18,
+        tokens: &[
+            EvmToken {
+                symbol: "USDC",
+                contract: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+                decimals: 6,
+            },
+            // ARB governance token. This is the Arbitrum One (mainnet) contract;
+            // there is no canonical ARB on Sepolia testnet, so it reads 0 here
+            // until we flip to mainnet.
+            EvmToken {
+                symbol: "ARB",
+                contract: "0x912CE59144191C1204E64559FE8253a0e49E6548",
+                decimals: 18,
+            },
+        ],
     },
 ];
 
@@ -55,10 +99,22 @@ pub struct Addresses {
     pub network: String,
 }
 
+pub fn find_evm_chain(name: &str) -> Option<&'static EvmChain> {
+    EVM_CHAINS.iter().find(|c| c.name == name)
+}
+
+#[derive(Serialize)]
+pub struct TokenBalance {
+    pub symbol: String,
+    pub amount: f64,
+}
+
 #[derive(Serialize)]
 pub struct EvmBalance {
     pub network: String,
-    pub usdc: f64,
+    pub tokens: Vec<TokenBalance>,
+    pub native: f64,
+    pub native_symbol: String,
     pub explorer_tx: String,
 }
 
@@ -133,12 +189,24 @@ async fn inner_get_balances(
     // that chain rather than sinking the whole request.
     let mut evm = Vec::new();
     for chain in EVM_CHAINS {
-        let usdc = fetch_evm_usdc(&client, chain, evm_address)
+        let mut tokens = Vec::new();
+        for token in chain.tokens {
+            let amount = fetch_evm_token(&client, chain.rpc, token, evm_address)
+                .await
+                .unwrap_or(0.0);
+            tokens.push(TokenBalance {
+                symbol: token.symbol.to_string(),
+                amount,
+            });
+        }
+        let native = fetch_evm_native(&client, chain, evm_address)
             .await
             .unwrap_or(0.0);
         evm.push(EvmBalance {
             network: chain.name.to_string(),
-            usdc,
+            tokens,
+            native,
+            native_symbol: chain.native_symbol.to_string(),
             explorer_tx: chain.explorer_tx.to_string(),
         });
     }
@@ -153,22 +221,23 @@ async fn inner_get_balances(
     })
 }
 
-/// Reads an EVM address's USDC balance via `eth_call` to the token contract's
+/// Reads an ERC-20 token balance via `eth_call` to the token contract's
 /// `balanceOf(address)` (selector 0x70a08231). No secrets involved.
-async fn fetch_evm_usdc(
+async fn fetch_evm_token(
     client: &reqwest::Client,
-    chain: &EvmChain,
+    rpc: &str,
+    token: &EvmToken,
     address: &str,
 ) -> Result<f64> {
     let addr_hex = address.trim_start_matches("0x").to_lowercase();
     // ABI-encode: 4-byte selector + address left-padded to 32 bytes.
     let data = format!("0x70a08231{addr_hex:0>64}");
     let resp: serde_json::Value = client
-        .post(chain.rpc)
+        .post(rpc)
         .json(&json!({
             "jsonrpc": "2.0", "id": 1,
             "method": "eth_call",
-            "params": [{ "to": chain.usdc_contract, "data": data }, "latest"]
+            "params": [{ "to": token.contract, "data": data }, "latest"]
         }))
         .send()
         .await
@@ -182,7 +251,36 @@ async fn fetch_evm_usdc(
     }
     let hex = resp["result"].as_str().unwrap_or("0x0");
     let raw = u128::from_str_radix(hex.trim_start_matches("0x"), 16).unwrap_or(0);
-    Ok(raw as f64 / 10f64.powi(chain.usdc_decimals as i32))
+    Ok(raw as f64 / 10f64.powi(token.decimals as i32))
+}
+
+/// Reads the native gas-token balance (POL/ETH) via `eth_getBalance`. Native
+/// EVM tokens always have 18 decimals (wei).
+async fn fetch_evm_native(
+    client: &reqwest::Client,
+    chain: &EvmChain,
+    address: &str,
+) -> Result<f64> {
+    let resp: serde_json::Value = client
+        .post(chain.rpc)
+        .json(&json!({
+            "jsonrpc": "2.0", "id": 1,
+            "method": "eth_getBalance",
+            "params": [address, "latest"]
+        }))
+        .send()
+        .await
+        .context("EVM native balance request failed")?
+        .json()
+        .await
+        .context("EVM native balance response was not JSON")?;
+
+    if let Some(err) = resp.get("error") {
+        return Err(anyhow!("EVM RPC error: {err}"));
+    }
+    let hex = resp["result"].as_str().unwrap_or("0x0");
+    let raw = u128::from_str_radix(hex.trim_start_matches("0x"), 16).unwrap_or(0);
+    Ok(raw as f64 / 1e18)
 }
 
 /// Returns (confirmed, pending) sats for the address.

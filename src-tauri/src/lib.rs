@@ -18,11 +18,14 @@ pub fn run() {
             commands::wallet::unlock_wallet,
             commands::wallet::lock_wallet,
             commands::wallet::wallet_status,
+            commands::wallet::wallet_source_present,
             commands::chain::get_addresses,
             commands::chain::get_balances,
             commands::send::send_btc,
             commands::send::send_sol,
             commands::send::send_usdc,
+            commands::send::estimate_btc_fee,
+            commands::evm::send_evm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -45,6 +45,24 @@ pub fn derive_solana_signing_key(seed: &SecretBytes, index: u32) -> Result<Signi
 /// and token contract differ. Returns the checksummed-lowercase `0x…` string.
 pub fn derive_evm_address(seed: &SecretBytes, index: u32) -> Result<String> {
     let secp = Secp256k1::new();
+    let secret = derive_evm_secret_key(seed, index)?;
+    let pubkey = PublicKey::from_secret_key(&secp, &secret);
+
+    // Ethereum address = last 20 bytes of keccak256(uncompressed pubkey without
+    // the 0x04 prefix, i.e. the raw X||Y coordinates).
+    let uncompressed = pubkey.serialize_uncompressed();
+    let hash = Keccak256::digest(&uncompressed[1..]);
+    Ok(format!("0x{}", hex::encode(&hash[12..])))
+}
+
+/// Returns the secp256k1 private key for the EVM account at
+/// `m/44'/60'/0'/0/{index}` — needed for signing transactions. Same key that
+/// backs `derive_evm_address`.
+pub fn derive_evm_secret_key(
+    seed: &SecretBytes,
+    index: u32,
+) -> Result<bitcoin::secp256k1::SecretKey> {
+    let secp = Secp256k1::new();
     // The network flag only affects xpub/xprv serialization, not the derived
     // key bytes, so Bitcoin's mainnet flag is fine here.
     let master =
@@ -54,13 +72,7 @@ pub fn derive_evm_address(seed: &SecretBytes, index: u32) -> Result<String> {
     let child = master
         .derive_priv(&secp, &path)
         .context("failed to derive EVM child key")?;
-    let pubkey = PublicKey::from_secret_key(&secp, &child.private_key);
-
-    // Ethereum address = last 20 bytes of keccak256(uncompressed pubkey without
-    // the 0x04 prefix, i.e. the raw X||Y coordinates).
-    let uncompressed = pubkey.serialize_uncompressed();
-    let hash = Keccak256::digest(&uncompressed[1..]);
-    Ok(format!("0x{}", hex::encode(&hash[12..])))
+    Ok(child.private_key)
 }
 
 #[cfg(test)]
