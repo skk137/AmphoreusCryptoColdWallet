@@ -158,7 +158,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
   return (
     <main className="container">
       <Logo size={32} />
-      {addresses && <p className="badge">{addresses.network} — δοκιμαστικά δίκτυα, όχι πραγματικά χρήματα</p>}
+      {addresses && <p className="badge">{addresses.network} — δοκιμαστικά δίκτυα </p>}
 
       <div className="card">
         <h2>Bitcoin (testnet)</h2>

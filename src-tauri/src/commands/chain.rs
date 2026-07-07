@@ -32,14 +32,14 @@ pub struct EvmChain {
 
 pub const EVM_CHAINS: &[EvmChain] = &[
     EvmChain {
-        name: "Polygon Amoy",
+        name: "Polygon Network",
         rpc: "https://polygon-amoy-bor-rpc.publicnode.com",
         usdc_contract: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
         usdc_decimals: 6,
         explorer_tx: "https://amoy.polygonscan.com/tx/",
     },
     EvmChain {
-        name: "Arbitrum Sepolia",
+        name: "Arbitrum Network",
         rpc: "https://sepolia-rollup.arbitrum.io/rpc",
         usdc_contract: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
         usdc_decimals: 6,
