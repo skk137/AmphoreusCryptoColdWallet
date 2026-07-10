@@ -2,29 +2,48 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import Onboarding from "./routes/Onboarding";
 import Dashboard from "./routes/Dashboard";
+import Settings from "./components/Settings";
 import { walletStatus } from "./lib/tauri";
 
 function App() {
   const [unlocked, setUnlocked] = useState<boolean | null>(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "amphora");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     walletStatus().then(setUnlocked);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  let content;
   if (unlocked === null) {
-    return (
+    content = (
       <main className="container">
         <p className="hint" style={{ textAlign: "center" }}>
           Φόρτωση...
         </p>
       </main>
     );
+  } else if (unlocked) {
+    content = <Dashboard onLocked={() => setUnlocked(false)} />;
+  } else {
+    content = <Onboarding onUnlocked={() => setUnlocked(true)} />;
   }
 
-  return unlocked ? (
-    <Dashboard onLocked={() => setUnlocked(false)} />
-  ) : (
-    <Onboarding onUnlocked={() => setUnlocked(true)} />
+  return (
+    <>
+      <button className="gear" title="Ρυθμίσεις" onClick={() => setSettingsOpen(true)}>
+        ⚙
+      </button>
+      {content}
+      {settingsOpen && (
+        <Settings theme={theme} setTheme={setTheme} onClose={() => setSettingsOpen(false)} />
+      )}
+    </>
   );
 }
 

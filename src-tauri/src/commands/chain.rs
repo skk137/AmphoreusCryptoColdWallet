@@ -70,7 +70,6 @@ pub const EVM_CHAINS: &[EvmChain] = &[
             EvmToken { symbol: "WBTC", contract: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", decimals: 8 },
             EvmToken { symbol: "AAVE", contract: "0xD6DF932A45C0f255f85145f286eA0b292B21C90B", decimals: 18 },
             EvmToken { symbol: "UNI",  contract: "0xb33EaAd8d922B1083446DC23f610c2567fB5180f", decimals: 18 },
-            EvmToken { symbol: "SKK", contract: "0xc2132D05D31c914a87C6611C10748AEb04B58e8", decimals: 6 },
         ],
     },
     EvmChain {
@@ -95,6 +94,91 @@ pub const EVM_CHAINS: &[EvmChain] = &[
                 decimals: 18,
             },
         ],
+    },
+    EvmChain {
+        name: "Base Network",
+        rpc: "https://base-sepolia-rpc.publicnode.com",
+        explorer_tx: "https://sepolia.basescan.org/tx/",
+        chain_id: 84532,
+        native_symbol: "ETH",
+        native_decimals: 18,
+        tokens: &[
+            EvmToken {
+                symbol: "USDC",
+                contract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+                decimals: 6,
+            },
+            // WETH predeploy — exists on Base Sepolia (real balance possible).
+            EvmToken {
+                symbol: "WETH",
+                contract: "0x4200000000000000000000000000000000000006",
+                decimals: 18,
+            },
+            // DAI mainnet contract — placeholder, reads 0 on testnet.
+            EvmToken {
+                symbol: "DAI",
+                contract: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+                decimals: 18,
+            },
+        ],
+    },
+    EvmChain {
+        name: "Optimism Network",
+        rpc: "https://optimism-sepolia-rpc.publicnode.com",
+        explorer_tx: "https://sepolia-optimism.etherscan.io/tx/",
+        chain_id: 11155420,
+        native_symbol: "ETH",
+        native_decimals: 18,
+        tokens: &[
+            EvmToken {
+                symbol: "USDC",
+                contract: "0x5fD84259d66Cd46123540766Be93DFE6D43130D7",
+                decimals: 6,
+            },
+            // WETH + OP governance token both exist on OP Sepolia (real).
+            EvmToken {
+                symbol: "WETH",
+                contract: "0x4200000000000000000000000000000000000006",
+                decimals: 18,
+            },
+            EvmToken {
+                symbol: "OP",
+                contract: "0x4200000000000000000000000000000000000042",
+                decimals: 18,
+            },
+            // DAI mainnet contract — placeholder, reads 0 on testnet.
+            EvmToken {
+                symbol: "DAI",
+                contract: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
+                decimals: 18,
+            },
+        ],
+    },
+    EvmChain {
+        name: "Ethereum Network",
+        rpc: "https://ethereum-sepolia-rpc.publicnode.com",
+        explorer_tx: "https://sepolia.etherscan.io/tx/",
+        chain_id: 11155111,
+        native_symbol: "ETH",
+        native_decimals: 18,
+        tokens: &[EvmToken {
+            symbol: "USDC",
+            contract: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+            decimals: 6,
+        }],
+    },
+    EvmChain {
+        name: "Avalanche Network",
+        rpc: "https://avalanche-fuji-c-chain-rpc.publicnode.com",
+        explorer_tx: "https://testnet.snowtrace.io/tx/",
+        chain_id: 43113,
+        native_symbol: "AVAX",
+        native_decimals: 18,
+        tokens: &[EvmToken {
+            symbol: "USDC",
+            contract: "0x5425890298aed601595a70AB815c96711a31Bc65",
+            decimals: 6,
+        }],
     },
 ];
 
@@ -277,7 +361,12 @@ async fn inner_get_balances(
     sol_address: &str,
     evm_address: &str,
 ) -> Result<Balances> {
-    let client = reqwest::Client::new();
+    // Per-request timeout so one slow RPC (across 6+ EVM networks) can't hang
+    // the whole balance load — a stalled chain just reports 0.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
 
     let (btc_sats, btc_pending_sats) = fetch_btc_balance(&client, btc_address).await?;
     let sol_lamports = fetch_sol_balance(&client, sol_address).await?;

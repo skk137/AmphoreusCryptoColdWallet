@@ -75,7 +75,7 @@ function AddressView({ value }: { value: string }) {
       </div>
       {showQr && (
         <div className="qr">
-          <QRCodeSVG value={value} size={140} bgColor="transparent" fgColor="#ece6df" level="M" />
+          <QRCodeSVG value={value} size={140} bgColor="#ffffff" fgColor="#111111" level="M" />
         </div>
       )}
     </div>
@@ -350,6 +350,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
   const [busy, setBusy] = useState(false);
   const [lockProgress, setLockProgress] = useState(0); // 0 → 1 (full = lock)
   const [tab, setTab] = useState<"home" | "history">("home");
+  const [evmNet, setEvmNet] = useState(""); // selected EVM network name ("" = first)
 
   async function load() {
     setError("");
@@ -534,25 +535,49 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
               Ίδια διεύθυνση για όλα τα EVM δίκτυα. Το USDC κάθε δικτύου είναι ξεχωριστό — πρόσεξε
               πάντα σε ποιο chain λαμβάνεις/στέλνεις.
             </p>
-            {balances?.evm.map((b) => (
-              <div key={b.network} className="evm-net">
-                {b.tokens.map((t) => (
-                  <p className="balance" key={t.symbol} style={{ margin: "0 0 0.4rem" }}>
-                    <CoinIcon symbol={t.symbol} />
-                    {t.amount.toFixed(2)} {t.symbol} <span className="chain-tag">{b.network}</span>
-                  </p>
-                ))}
-                <p className="balance" style={{ margin: 0 }}>
-                  <CoinIcon symbol={b.native_symbol} />
-                  {b.native.toFixed(4)} {b.native_symbol} <span className="chain-tag">{b.network}</span>
-                </p>
-                <p className="hint" style={{ margin: "0.1rem 0 0" }}>
-                  {b.native_symbol} = native νόμισμα, πληρώνει τα fees
-                </p>
-                <EvmSendForm b={b} onSent={load} />
-              </div>
-            ))}
-            {!balances && <p>{loading ? "Φόρτωση..." : "—"}</p>}
+            {balances ? (
+              (() => {
+                const selectedNet = evmNet || balances.evm[0]?.network || "";
+                const b = balances.evm.find((x) => x.network === selectedNet) ?? balances.evm[0];
+                return (
+                  <>
+                    <select
+                      className="net-select"
+                      value={selectedNet}
+                      onChange={(e) => setEvmNet(e.target.value)}
+                    >
+                      {balances.evm.map((n) => (
+                        <option key={n.network} value={n.network}>
+                          {n.network}
+                        </option>
+                      ))}
+                    </select>
+                    {b && (
+                      <div className="evm-net">
+                        {b.tokens.map((t) => (
+                          <p className="balance" key={t.symbol} style={{ margin: "0 0 0.4rem" }}>
+                            <CoinIcon symbol={t.symbol} />
+                            {t.amount.toFixed(2)} {t.symbol}{" "}
+                            <span className="chain-tag">{b.network}</span>
+                          </p>
+                        ))}
+                        <p className="balance" style={{ margin: 0 }}>
+                          <CoinIcon symbol={b.native_symbol} />
+                          {b.native.toFixed(4)} {b.native_symbol}{" "}
+                          <span className="chain-tag">{b.network}</span>
+                        </p>
+                        <p className="hint" style={{ margin: "0.1rem 0 0" }}>
+                          {b.native_symbol} = native νόμισμα, πληρώνει τα fees
+                        </p>
+                        <EvmSendForm b={b} onSent={load} />
+                      </div>
+                    )}
+                  </>
+                );
+              })()
+            ) : (
+              <p>{loading ? "Φόρτωση..." : "—"}</p>
+            )}
           </>
         ) : (
           <p>{loading ? "Φόρτωση..." : "—"}</p>
