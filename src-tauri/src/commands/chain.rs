@@ -18,6 +18,10 @@ pub const SOLANA_RPC: &str = "https://api.devnet.solana.com";
 pub const STABLECOIN_MINT: &str = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 pub const STABLECOIN_LABEL: &str = "USDC";
 pub const STABLECOIN_DECIMALS: u8 = 6;
+// Litecoin testnet (Esplora-compatible). Dogecoin has no usable testnet API,
+// so it's mainnet read-only via Blockcypher.
+pub const LTC_ESPLORA: &str = "https://litecoinspace.org/testnet/api";
+pub const DOGE_API: &str = "https://api.blockcypher.com/v1/doge/main";
 
 /// An EVM chain we track USDC on. All share one wallet address; only the RPC
 /// endpoint and USDC contract differ. Testnets for now — swap the four fields
@@ -161,11 +165,29 @@ pub const EVM_CHAINS: &[EvmChain] = &[
         chain_id: 11155111,
         native_symbol: "ETH",
         native_decimals: 18,
-        tokens: &[EvmToken {
-            symbol: "USDC",
-            contract: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-            decimals: 6,
-        }],
+        // USDC is the Sepolia testnet contract (real). The rest are Ethereum
+        // MAINNET ERC-20 contracts — placeholders that read 0 on Sepolia and
+        // light up once we flip Ethereum Network to mainnet.
+        tokens: &[
+            EvmToken { symbol: "USDC",   contract: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", decimals: 6 },
+            EvmToken { symbol: "USDT",   contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 },
+            EvmToken { symbol: "WBTC",   contract: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", decimals: 8 },
+            EvmToken { symbol: "DAI",    contract: "0x6B175474E89094C44Da98b954EedeAC495271d0F", decimals: 18 },
+            EvmToken { symbol: "WETH",   contract: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", decimals: 18 },
+            EvmToken { symbol: "wstETH", contract: "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0", decimals: 18 },
+            EvmToken { symbol: "LINK",   contract: "0x514910771AF9Ca656af840dff83E8264EcF986CA", decimals: 18 },
+            EvmToken { symbol: "UNI",    contract: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", decimals: 18 },
+            EvmToken { symbol: "AAVE",   contract: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", decimals: 18 },
+            EvmToken { symbol: "LDO",    contract: "0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32", decimals: 18 },
+            EvmToken { symbol: "PEPE",   contract: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", decimals: 18 },
+            EvmToken { symbol: "SHIB",   contract: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", decimals: 18 },
+            EvmToken { symbol: "OKB",    contract: "0x75231F58b43240C9718Dd58B4967c5114342a86c", decimals: 18 },
+            EvmToken { symbol: "PAXG",   contract: "0x45804880De22913dAFE09f4980848ECE6EcbAf78", decimals: 18 },
+            EvmToken { symbol: "XAUT",   contract: "0x68749665FF8D2d112Fa859AA293F07A622782F38", decimals: 6 },
+            EvmToken { symbol: "CRO",    contract: "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b", decimals: 8 },
+            EvmToken { symbol: "ENA",    contract: "0x57e114B691Db790C35207b2e685D4A43181e6061", decimals: 18 },
+            EvmToken { symbol: "ONDO",   contract: "0xfAbA6f8e4a5E8Ab82F62fe7C39859FA577269BE3", decimals: 18 },
+        ],
     },
     EvmChain {
         name: "Avalanche Network",
@@ -187,6 +209,8 @@ pub struct Addresses {
     pub btc: String,
     pub sol: String,
     pub evm: String,
+    pub ltc: String,
+    pub doge: String,
     pub network: String,
 }
 
@@ -310,6 +334,8 @@ pub struct Balances {
     pub stablecoin: f64,
     pub stablecoin_label: String,
     pub evm: Vec<EvmBalance>,
+    pub ltc_sats: u64,
+    pub doge_koinu: u64,
 }
 
 /// Derives the receive addresses (account 0) from the unlocked seed. Only
@@ -334,11 +360,15 @@ fn inner_get_addresses(state: &AppState) -> Result<Addresses> {
     let sol = bs58::encode(sol_key.verifying_key().to_bytes()).into_string();
 
     let evm = derivation::derive_evm_address(&seed_bytes, 0)?;
+    let ltc = derivation::derive_litecoin_address(&seed_bytes)?;
+    let doge = derivation::derive_dogecoin_address(&seed_bytes)?;
 
     Ok(Addresses {
         btc,
         sol,
         evm,
+        ltc,
+        doge,
         network: format!("{BTC_NETWORK:?} / devnet / EVM testnets"),
     })
 }
@@ -350,8 +380,10 @@ pub async fn get_balances(
     btc_address: String,
     sol_address: String,
     evm_address: String,
+    ltc_address: String,
+    doge_address: String,
 ) -> Result<Balances, String> {
-    inner_get_balances(&btc_address, &sol_address, &evm_address)
+    inner_get_balances(&btc_address, &sol_address, &evm_address, &ltc_address, &doge_address)
         .await
         .map_err(|e| e.to_string())
 }
@@ -360,6 +392,8 @@ async fn inner_get_balances(
     btc_address: &str,
     sol_address: &str,
     evm_address: &str,
+    ltc_address: &str,
+    doge_address: &str,
 ) -> Result<Balances> {
     // Per-request timeout so one slow RPC (across 6+ EVM networks) can't hang
     // the whole balance load — a stalled chain just reports 0.
@@ -371,32 +405,37 @@ async fn inner_get_balances(
     let (btc_sats, btc_pending_sats) = fetch_btc_balance(&client, btc_address).await?;
     let sol_lamports = fetch_sol_balance(&client, sol_address).await?;
     let stablecoin = fetch_stablecoin_balance(&client, sol_address).await?;
+    let ltc_sats = fetch_ltc_balance(&client, ltc_address).await.unwrap_or(0);
+    let doge_koinu = fetch_doge_balance(&client, doge_address).await.unwrap_or(0);
 
-    // Fetch each EVM chain independently; a single failing RPC reports 0 for
-    // that chain rather than sinking the whole request.
-    let mut evm = Vec::new();
-    for chain in EVM_CHAINS {
-        let mut tokens = Vec::new();
-        for token in chain.tokens {
-            let amount = fetch_evm_token(&client, chain.rpc, token, evm_address)
-                .await
-                .unwrap_or(0.0);
-            tokens.push(TokenBalance {
-                symbol: token.symbol.to_string(),
-                amount,
+    // Fetch all EVM chains — and all tokens within each chain — concurrently,
+    // so ~40 balance calls take ~1 round-trip instead of dozens sequentially.
+    // A single failing RPC reports 0 for that entry rather than sinking it.
+    let evm = futures::future::join_all(EVM_CHAINS.iter().map(|chain| {
+        let client = &client;
+        async move {
+            let token_futs = chain.tokens.iter().map(|token| async move {
+                TokenBalance {
+                    symbol: token.symbol.to_string(),
+                    amount: fetch_evm_token(client, chain.rpc, token, evm_address)
+                        .await
+                        .unwrap_or(0.0),
+                }
             });
+            let (tokens, native) = futures::join!(
+                futures::future::join_all(token_futs),
+                fetch_evm_native(client, chain, evm_address)
+            );
+            EvmBalance {
+                network: chain.name.to_string(),
+                tokens,
+                native: native.unwrap_or(0.0),
+                native_symbol: chain.native_symbol.to_string(),
+                explorer_tx: chain.explorer_tx.to_string(),
+            }
         }
-        let native = fetch_evm_native(&client, chain, evm_address)
-            .await
-            .unwrap_or(0.0);
-        evm.push(EvmBalance {
-            network: chain.name.to_string(),
-            tokens,
-            native,
-            native_symbol: chain.native_symbol.to_string(),
-            explorer_tx: chain.explorer_tx.to_string(),
-        });
-    }
+    }))
+    .await;
 
     Ok(Balances {
         btc_sats,
@@ -405,7 +444,34 @@ async fn inner_get_balances(
         stablecoin,
         stablecoin_label: STABLECOIN_LABEL.to_string(),
         evm,
+        ltc_sats,
+        doge_koinu,
     })
+}
+
+/// Litecoin testnet balance (litoshis) via the Esplora-compatible API.
+async fn fetch_ltc_balance(client: &reqwest::Client, addr: &str) -> Result<u64> {
+    let resp: serde_json::Value = client
+        .get(format!("{LTC_ESPLORA}/address/{addr}"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let s = &resp["chain_stats"];
+    Ok(s["funded_txo_sum"].as_u64().unwrap_or(0).saturating_sub(s["spent_txo_sum"].as_u64().unwrap_or(0)))
+}
+
+/// Dogecoin mainnet balance (koinu) via Blockcypher.
+async fn fetch_doge_balance(client: &reqwest::Client, addr: &str) -> Result<u64> {
+    let resp: serde_json::Value = client
+        .get(format!("{DOGE_API}/addrs/{addr}/balance"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    Ok(resp["balance"].as_u64().unwrap_or(0))
 }
 
 /// Reads an ERC-20 token balance via `eth_call` to the token contract's

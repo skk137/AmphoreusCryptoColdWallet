@@ -55,6 +55,40 @@ pub fn derive_evm_address(seed: &SecretBytes, index: u32) -> Result<String> {
     Ok(format!("0x{}", hex::encode(&hash[12..])))
 }
 
+/// Derives the compressed secp256k1 public key at a BIP32 path (network flag
+/// is irrelevant to the key bytes). Shared by the UTXO-fork chains.
+fn derive_compressed_pubkey(seed: &SecretBytes, path: &str) -> Result<[u8; 33]> {
+    let secp = Secp256k1::new();
+    let master =
+        Xpriv::new_master(Network::Bitcoin, seed.as_bytes()).context("failed to derive master key")?;
+    let dp = DerivationPath::from_str(path).context("invalid derivation path")?;
+    let child = master.derive_priv(&secp, &dp).context("failed to derive child key")?;
+    let pk = PublicKey::from_secret_key(&secp, &child.private_key);
+    Ok(pk.serialize())
+}
+
+/// Litecoin testnet native-segwit address (`tltc1…`) at `m/84'/1'/0'/0/0`.
+pub fn derive_litecoin_address(seed: &SecretBytes) -> Result<String> {
+    use bitcoin::hashes::Hash as _;
+    let pk = derive_compressed_pubkey(seed, "m/84'/1'/0'/0/0")?;
+    let h160 = bitcoin::hashes::hash160::Hash::hash(&pk);
+    let hrp = bech32::Hrp::parse("tltc").map_err(|e| anyhow::anyhow!("bad hrp: {e}"))?;
+    bech32::segwit::encode_v0(hrp, &h160.to_byte_array())
+        .map_err(|e| anyhow::anyhow!("LTC address encode failed: {e}"))
+}
+
+/// Dogecoin **mainnet** legacy P2PKH address (`D…`) at `m/44'/3'/0'/0/0`.
+/// Mainnet because Dogecoin testnet has no usable public API — receive-only.
+pub fn derive_dogecoin_address(seed: &SecretBytes) -> Result<String> {
+    use bitcoin::hashes::Hash as _;
+    let pk = derive_compressed_pubkey(seed, "m/44'/3'/0'/0/0")?;
+    let h160 = bitcoin::hashes::hash160::Hash::hash(&pk);
+    // Base58Check with Dogecoin's mainnet P2PKH version byte 0x1e.
+    Ok(bs58::encode(h160.to_byte_array())
+        .with_check_version(0x1e)
+        .into_string())
+}
+
 /// Returns the secp256k1 private key for the EVM account at
 /// `m/44'/60'/0'/0/{index}` — needed for signing transactions. Same key that
 /// backs `derive_evm_address`.
@@ -113,6 +147,22 @@ mod tests {
         let a = derive_solana_signing_key(&seed, 0).unwrap();
         let b = derive_solana_signing_key(&seed, 1).unwrap();
         assert_ne!(a.to_bytes(), b.to_bytes());
+    }
+
+    #[test]
+    fn ltc_and_doge_addresses_have_correct_format() {
+        use crate::crypto::secret::SecretString;
+        use crate::crypto::seed::phrase_to_seed;
+        let phrase = SecretString::new(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".to_string(),
+        );
+        let seed = phrase_to_seed(&phrase, "").unwrap();
+        let ltc = derive_litecoin_address(&seed).unwrap();
+        let doge = derive_dogecoin_address(&seed).unwrap();
+        println!("LTC(testnet)={ltc}");
+        println!("DOGE(mainnet)={doge}");
+        assert!(ltc.starts_with("tltc1"), "LTC addr wrong prefix: {ltc}");
+        assert!(doge.starts_with('D'), "DOGE addr wrong prefix: {doge}");
     }
 
     #[test]

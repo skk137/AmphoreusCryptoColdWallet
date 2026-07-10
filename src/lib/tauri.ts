@@ -45,6 +45,8 @@ export interface Addresses {
   btc: string;
   sol: string;
   evm: string;
+  ltc: string;
+  doge: string;
   network: string;
 }
 
@@ -68,6 +70,8 @@ export interface Balances {
   stablecoin: number;
   stablecoin_label: string;
   evm: EvmBalance[];
+  ltc_sats: number;
+  doge_koinu: number;
 }
 
 export function getAddresses(): Promise<Addresses> {
@@ -77,9 +81,11 @@ export function getAddresses(): Promise<Addresses> {
 export function getBalances(
   btcAddress: string,
   solAddress: string,
-  evmAddress: string
+  evmAddress: string,
+  ltcAddress: string,
+  dogeAddress: string
 ): Promise<Balances> {
-  return invoke("get_balances", { btcAddress, solAddress, evmAddress });
+  return invoke("get_balances", { btcAddress, solAddress, evmAddress, ltcAddress, dogeAddress });
 }
 
 export interface HistoryTx {

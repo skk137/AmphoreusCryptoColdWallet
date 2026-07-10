@@ -358,7 +358,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
     try {
       const addrs = await getAddresses();
       setAddresses(addrs);
-      setBalances(await getBalances(addrs.btc, addrs.sol, addrs.evm));
+      setBalances(await getBalances(addrs.btc, addrs.sol, addrs.evm, addrs.ltc, addrs.doge));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -578,6 +578,40 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
             ) : (
               <p>{loading ? "Φόρτωση..." : "—"}</p>
             )}
+          </>
+        ) : (
+          <p>{loading ? "Φόρτωση..." : "—"}</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Litecoin (testnet)</h2>
+        {addresses ? (
+          <>
+            <AddressView value={addresses.ltc} />
+            <p className="balance">
+              <CoinIcon symbol="LTC" />
+              {balances ? `${(balances.ltc_sats / 1e8).toFixed(8)} tLTC` : loading ? "..." : "—"}
+            </p>
+          </>
+        ) : (
+          <p>{loading ? "Φόρτωση..." : "—"}</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Dogecoin (mainnet · receive-only)</h2>
+        {addresses ? (
+          <>
+            <AddressView value={addresses.doge} />
+            <p className="balance">
+              <CoinIcon symbol="DOGE" />
+              {balances ? `${(balances.doge_koinu / 1e8).toFixed(4)} DOGE` : loading ? "..." : "—"}
+            </p>
+            <p className="hint">
+              Το Dogecoin δεν έχει testnet — αυτή είναι πραγματική mainnet διεύθυνση, μόνο για λήψη/εμφάνιση
+              (αποστολή δεν υποστηρίζεται ακόμα).
+            </p>
           </>
         ) : (
           <p>{loading ? "Φόρτωση..." : "—"}</p>
