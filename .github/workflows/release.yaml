@@ -1,0 +1,42 @@
+name: Tauri Release
+
+on:
+  push:
+    tags:
+      - "v*"   #οποιοδήποτε tag αρχίζει από v (για VERSIONING)
+
+jobs:
+  release:
+    permissions:
+      contents: write #Δίνει δικαιώματα στο workflow.
+
+    strategy:
+      fail-fast: false #Αν αποτύχει ένα λειτουργικό, μην σταματήσεις όλα τα υπόλοιπα.
+      matrix:
+        platform: # Διαφορετικά Builds
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+
+    runs-on: ${{ matrix.platform }}   # Χρησιμοποίησε το λειτουργικό που βρίσκεται στο matrix.
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
