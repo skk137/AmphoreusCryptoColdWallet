@@ -51,3 +51,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Amphoreus Crypto Cold Wallet ${{ github.ref_name }}"
+          releaseBody: "Automatic release build"
+          releaseDraft: false
+          prerelease: false
+
