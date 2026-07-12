@@ -41,6 +41,10 @@ export function walletSourcePresent(): Promise<boolean> {
   return invoke("wallet_source_present");
 }
 
+export function changePin(oldPin: string, newPin: string): Promise<void> {
+  return invoke("change_pin", { oldPin, newPin });
+}
+
 export interface Addresses {
   btc: string;
   sol: string;
@@ -101,6 +105,10 @@ export function getHistory(btcAddress: string, solAddress: string): Promise<Hist
 
 export function sendBtc(to: string, amountSats: number): Promise<string> {
   return invoke("send_btc", { to, amountSats });
+}
+
+export function sendLtc(to: string, amountSats: number): Promise<string> {
+  return invoke("send_ltc", { to, amountSats });
 }
 
 export function sendSol(to: string, amountLamports: number): Promise<string> {

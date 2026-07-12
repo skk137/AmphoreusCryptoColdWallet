@@ -12,14 +12,15 @@ use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::transaction::Version;
 use bitcoin::{
     Address, Amount, CompressedPublicKey, OutPoint, ScriptBuf, Sequence, Transaction, TxIn,
-    TxOut, Txid, Witness,
+    TxOut, Txid, Witness, WPubkeyHash,
 };
 use ed25519_dalek::SigningKey;
+use secp256k1::SecretKey;
 use serde::Deserialize;
 use serde_json::json;
 use tauri::State;
 
-use super::chain::{BTC_NETWORK, ESPLORA_BASE, SOLANA_RPC, STABLECOIN_DECIMALS, STABLECOIN_MINT};
+use super::chain::{BTC_NETWORK, ESPLORA_BASE, LTC_ESPLORA, SOLANA_RPC, STABLECOIN_DECIMALS, STABLECOIN_MINT};
 use crate::crypto::{derivation, seed};
 use crate::state::AppState;
 
@@ -242,6 +243,157 @@ async fn inner_send_btc(xpriv: Xpriv, from: Address, to: &str, amount: u64) -> R
         bail!("το δίκτυο απέρριψε τη συναλλαγή: {body}");
     }
     Ok(body) // the txid
+}
+
+/// Litecoin testnet send (native segwit, `tltc1…`). Same UTXO + P2WPKH signing
+/// as Bitcoin — only the address encoding and explorer API differ.
+#[tauri::command]
+pub async fn send_ltc(
+    state: State<'_, AppState>,
+    to: String,
+    amount_sats: u64,
+) -> Result<String, String> {
+    let secret = {
+        let guard = state.0.lock().expect("wallet state mutex poisoned");
+        let unlocked = guard.as_ref().ok_or("wallet is locked")?;
+        let seed_bytes = seed::phrase_to_seed(&unlocked.mnemonic, "").map_err(|e| e.to_string())?;
+        derivation::derive_litecoin_secret_key(&seed_bytes).map_err(|e| e.to_string())?
+    };
+    inner_send_ltc(secret, &to, amount_sats)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Decodes a `tltc1…` bech32 address into its P2WPKH script.
+fn ltc_address_to_script(addr: &str) -> Result<ScriptBuf> {
+    let (hrp, version, program) =
+        bech32::segwit::decode(addr).map_err(|_| anyhow!("μη έγκυρη διεύθυνση Litecoin"))?;
+    if hrp.as_str() != "tltc" {
+        bail!("η διεύθυνση δεν είναι Litecoin testnet");
+    }
+    if version.to_u8() != 0 || program.len() != 20 {
+        bail!("υποστηρίζονται μόνο διευθύνσεις tltc1 (segwit v0)");
+    }
+    let wpkh = WPubkeyHash::from_slice(&program).map_err(|_| anyhow!("κακό witness program"))?;
+    Ok(ScriptBuf::new_p2wpkh(&wpkh))
+}
+
+async fn inner_send_ltc(secret: SecretKey, to: &str, amount: u64) -> Result<String> {
+    if amount < DUST_SATS {
+        bail!("το ποσό είναι πολύ μικρό (ελάχιστο {DUST_SATS} litoshis)");
+    }
+    let secp = Secp256k1::new();
+    let pubkey = PublicKey::from_secret_key(&secp, &secret);
+    let comp = CompressedPublicKey(pubkey);
+    let wpkh = comp.wpubkey_hash();
+    let from_spk = ScriptBuf::new_p2wpkh(&wpkh);
+    let from_addr = bech32::segwit::encode_v0(bech32::Hrp::parse("tltc").unwrap(), &wpkh.to_byte_array())
+        .map_err(|e| anyhow!("LTC address encode: {e}"))?;
+    let to_spk = ltc_address_to_script(to)?;
+
+    let client = reqwest::Client::new();
+    let utxos: Vec<Utxo> = client
+        .get(format!("{LTC_ESPLORA}/address/{from_addr}/utxo"))
+        .send()
+        .await
+        .context("αποτυχία λήψης UTXOs")?
+        .error_for_status()?
+        .json()
+        .await
+        .context("μη έγκυρη απάντηση UTXO")?;
+    if utxos.is_empty() {
+        bail!("δεν υπάρχουν διαθέσιμα κεφάλαια");
+    }
+
+    let estimates: serde_json::Value = client
+        .get(format!("{LTC_ESPLORA}/fee-estimates"))
+        .send()
+        .await
+        .context("αποτυχία λήψης fee")?
+        .json()
+        .await
+        .unwrap_or_else(|_| json!({}));
+    let fee_rate = estimates["3"].as_f64().unwrap_or(1.0).max(1.0);
+    let fee_for =
+        |n_in: usize, n_out: usize| ((11.0 + 68.0 * n_in as f64 + 31.0 * n_out as f64) * fee_rate).ceil() as u64;
+
+    let mut candidates = utxos;
+    candidates.sort_by(|a, b| b.value.cmp(&a.value));
+    let mut selected: Vec<Utxo> = Vec::new();
+    let mut total = 0u64;
+    for u in candidates {
+        total += u.value;
+        selected.push(u);
+        if total >= amount + fee_for(selected.len(), 2) {
+            break;
+        }
+    }
+    let fee = fee_for(selected.len(), 2);
+    if total < amount + fee {
+        bail!("ανεπαρκές υπόλοιπο: {total} litoshis, χρειάζονται {}", amount + fee);
+    }
+    let change = total - amount - fee;
+
+    let mut outputs = vec![TxOut {
+        value: Amount::from_sat(amount),
+        script_pubkey: to_spk,
+    }];
+    if change >= DUST_SATS {
+        outputs.push(TxOut {
+            value: Amount::from_sat(change),
+            script_pubkey: from_spk.clone(),
+        });
+    }
+
+    let inputs: Vec<TxIn> = selected
+        .iter()
+        .map(|u| {
+            Ok(TxIn {
+                previous_output: OutPoint {
+                    txid: Txid::from_str(&u.txid).context("μη έγκυρο txid")?,
+                    vout: u.vout,
+                },
+                script_sig: ScriptBuf::new(),
+                sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+                witness: Witness::default(),
+            })
+        })
+        .collect::<Result<_>>()?;
+
+    let mut tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: inputs,
+        output: outputs,
+    };
+
+    let mut cache = SighashCache::new(&mut tx);
+    for (i, u) in selected.iter().enumerate() {
+        let sighash = cache
+            .p2wpkh_signature_hash(i, &from_spk, Amount::from_sat(u.value), EcdsaSighashType::All)
+            .context("αποτυχία sighash")?;
+        let sig = secp.sign_ecdsa(&Message::from_digest(sighash.to_byte_array()), &secret);
+        let sig = bitcoin::ecdsa::Signature {
+            signature: sig,
+            sighash_type: EcdsaSighashType::All,
+        };
+        *cache.witness_mut(i).ok_or_else(|| anyhow!("λείπει input {i}"))? =
+            Witness::p2wpkh(&sig, &pubkey);
+    }
+    drop(cache);
+
+    let resp = client
+        .post(format!("{LTC_ESPLORA}/tx"))
+        .body(serialize_hex(&tx))
+        .send()
+        .await
+        .context("αποτυχία broadcast")?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        bail!("το δίκτυο απέρριψε τη συναλλαγή: {body}");
+    }
+    Ok(body)
 }
 
 /// Builds, signs, and broadcasts a SOL transfer on devnet.

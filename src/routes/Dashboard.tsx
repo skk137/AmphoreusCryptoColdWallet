@@ -12,6 +12,7 @@ import {
   getHistory,
   lockWallet,
   sendBtc,
+  sendLtc,
   sendEvm,
   sendSol,
   sendUsdc,
@@ -19,8 +20,6 @@ import {
 } from "../lib/tauri";
 
 // Auto-lock after this much inactivity. Any mouse/keyboard activity resets it.
-const AUTO_LOCK_MS = 15 * 60 * 1000;
-
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -342,7 +341,13 @@ function HistoryCard({
   );
 }
 
-export default function Dashboard({ onLocked }: { onLocked: () => void }) {
+export default function Dashboard({
+  onLocked,
+  autoLockMin,
+}: {
+  onLocked: () => void;
+  autoLockMin: number;
+}) {
   const [addresses, setAddresses] = useState<Addresses | null>(null);
   const [balances, setBalances] = useState<Balances | null>(null);
   const [error, setError] = useState("");
@@ -370,8 +375,10 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
     load();
   }, []);
 
-  // Auto-lock: idle timeout (bar fills over 15 min of inactivity) + USB removal.
+  // Auto-lock: idle timeout (configurable; 0 = never) + USB removal.
+  // Re-runs whenever autoLockMin changes so the new timeout takes effect.
   useEffect(() => {
+    const lockMs = autoLockMin * 60 * 1000; // 0 = idle-lock disabled
     let lastActivity = Date.now();
     let locked = false;
     const bump = () => (lastActivity = Date.now());
@@ -388,8 +395,8 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
     let tick = 0;
     const interval = setInterval(async () => {
       const elapsed = Date.now() - lastActivity;
-      setLockProgress(Math.min(1, elapsed / AUTO_LOCK_MS));
-      if (elapsed >= AUTO_LOCK_MS) {
+      setLockProgress(lockMs > 0 ? Math.min(1, elapsed / lockMs) : 0);
+      if (lockMs > 0 && elapsed >= lockMs) {
         await lockNow();
         return;
       }
@@ -407,7 +414,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
       clearInterval(interval);
       events.forEach((e) => window.removeEventListener(e, bump));
     };
-  }, []);
+  }, [autoLockMin]);
 
   async function handleLock() {
     setBusy(true);
@@ -419,7 +426,7 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
     }
   }
 
-  const lockSecondsLeft = Math.max(0, Math.ceil((AUTO_LOCK_MS * (1 - lockProgress)) / 1000));
+  const lockSecondsLeft = Math.max(0, Math.ceil((autoLockMin * 60 * 1000 * (1 - lockProgress)) / 1000));
   const lockMin = Math.floor(lockSecondsLeft / 60);
   const lockSec = String(lockSecondsLeft % 60).padStart(2, "0");
 
@@ -593,6 +600,14 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
               <CoinIcon symbol="LTC" />
               {balances ? `${(balances.ltc_sats / 1e8).toFixed(8)} tLTC` : loading ? "..." : "—"}
             </p>
+            <SendForm
+              label="LTC"
+              unit="tLTC"
+              decimals={8}
+              explorerBase="https://litecoinspace.org/testnet/tx/"
+              onSend={(to, sats) => sendLtc(to, sats)}
+              onSent={load}
+            />
           </>
         ) : (
           <p>{loading ? "Φόρτωση..." : "—"}</p>
@@ -630,12 +645,14 @@ export default function Dashboard({ onLocked }: { onLocked: () => void }) {
         {busy ? "..." : "Κλείδωμα"}
       </button>
 
-      <div className="autolock" title={`Αυτόματο κλείδωμα σε ${lockMin}:${lockSec}`}>
-        <span className="autolock-label">κλείδωμα σε {lockMin}:{lockSec}</span>
-        <div className="autolock-bar">
-          <div className="autolock-fill" style={{ width: `${lockProgress * 100}%` }} />
+      {autoLockMin > 0 && (
+        <div className="autolock" title={`Αυτόματο κλείδωμα σε ${lockMin}:${lockSec}`}>
+          <span className="autolock-label">κλείδωμα σε {lockMin}:{lockSec}</span>
+          <div className="autolock-bar">
+            <div className="autolock-fill" style={{ width: `${lockProgress * 100}%` }} />
+          </div>
         </div>
-      </div>
+      )}
     </main>
   );
 }

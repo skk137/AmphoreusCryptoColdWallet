@@ -120,6 +120,36 @@ pub fn wallet_source_present(state: State<AppState>) -> bool {
     }
 }
 
+/// Re-encrypts the seed file on the USB with a new PIN. Verifies the current
+/// PIN first (by decrypting the existing file), then writes a fresh
+/// {salt,nonce,ciphertext} derived from `new_pin`. The wallet must be unlocked.
+#[tauri::command]
+pub fn change_pin(state: State<AppState>, old_pin: String, new_pin: String) -> Result<(), String> {
+    inner_change_pin(&state, &old_pin, &new_pin).map_err(|e| e.to_string())
+}
+
+fn inner_change_pin(state: &AppState, old_pin: &str, new_pin: &str) -> Result<()> {
+    if new_pin.chars().count() < 6 {
+        bail!("Το νέο PIN πρέπει να έχει τουλάχιστον 6 χαρακτήρες");
+    }
+    let guard = state.0.lock().expect("wallet state mutex poisoned");
+    let unlocked = guard.as_ref().ok_or_else(|| anyhow::anyhow!("wallet is locked"))?;
+    let path = seed_file_path(&unlocked.usb_mount_point);
+
+    let json = fs::read_to_string(&path).context("δεν βρέθηκε αρχείο wallet")?;
+    let encrypted: encryption::EncryptedSeedFile =
+        serde_json::from_str(&json).context("κατεστραμμένο αρχείο seed")?;
+    // Verify the current PIN by decrypting; the recovered phrase is what we
+    // re-encrypt (identical to the in-memory mnemonic).
+    let phrase = encryption::decrypt_phrase(&encrypted, old_pin)
+        .map_err(|_| anyhow::anyhow!("Λάθος τρέχον PIN"))?;
+
+    let re = encryption::encrypt_phrase(&phrase, new_pin)?;
+    let out = serde_json::to_string_pretty(&re)?;
+    fs::write(&path, out).context("αποτυχία εγγραφής στο USB")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

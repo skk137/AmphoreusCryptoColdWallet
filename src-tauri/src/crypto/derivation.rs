@@ -77,6 +77,15 @@ pub fn derive_litecoin_address(seed: &SecretBytes) -> Result<String> {
         .map_err(|e| anyhow::anyhow!("LTC address encode failed: {e}"))
 }
 
+/// The secp256k1 private key backing the Litecoin address (for signing sends).
+pub fn derive_litecoin_secret_key(seed: &SecretBytes) -> Result<bitcoin::secp256k1::SecretKey> {
+    let secp = Secp256k1::new();
+    let master =
+        Xpriv::new_master(Network::Bitcoin, seed.as_bytes()).context("failed to derive master key")?;
+    let dp = DerivationPath::from_str("m/84'/1'/0'/0/0").context("invalid LTC path")?;
+    Ok(master.derive_priv(&secp, &dp).context("failed to derive LTC key")?.private_key)
+}
+
 /// Dogecoin **mainnet** legacy P2PKH address (`D…`) at `m/44'/3'/0'/0/0`.
 /// Mainnet because Dogecoin testnet has no usable public API — receive-only.
 pub fn derive_dogecoin_address(seed: &SecretBytes) -> Result<String> {
