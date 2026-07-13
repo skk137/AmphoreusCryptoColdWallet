@@ -4,6 +4,7 @@ import Onboarding from "./routes/Onboarding";
 import Dashboard from "./routes/Dashboard";
 import Settings from "./components/Settings";
 import { walletStatus } from "./lib/tauri";
+import { Lang, LangContext, makeT } from "./lib/i18n";
 
 function App() {
   const [unlocked, setUnlocked] = useState<boolean | null>(null);
@@ -31,12 +32,14 @@ function App() {
     localStorage.setItem("lang", lang);
   }, [lang]);
 
+  const t = makeT(lang as Lang);
+
   let content;
   if (unlocked === null) {
     content = (
       <main className="container">
         <p className="hint" style={{ textAlign: "center" }}>
-          Φόρτωση...
+          {t("loading")}
         </p>
       </main>
     );
@@ -47,8 +50,8 @@ function App() {
   }
 
   return (
-    <>
-      <button className="gear" title="Ρυθμίσεις" onClick={() => setSettingsOpen(true)}>
+    <LangContext.Provider value={{ lang: lang as Lang, t }}>
+      <button className="gear" title={t("settings")} onClick={() => setSettingsOpen(true)}>
         ⚙
       </button>
       {content}
@@ -64,7 +67,7 @@ function App() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
-    </>
+    </LangContext.Provider>
   );
 }
 

@@ -1,18 +1,17 @@
 import React from "react";
 import { changePin } from "../lib/tauri";
+import { useT } from "../lib/i18n";
 
 export const THEMES = [
-  { id: "amphora", label: "Amphora (default)" },
-  { id: "purple", label: "Βαθύ μωβ" },
-  { id: "ocean", label: "Ωκεανός" },
-  { id: "light", label: "Ανοιχτό" },
+  { id: "amphora", label: "Amphora" },
+  { id: "purple", label: "Βαθύ μωβ / Deep purple" },
+  { id: "ocean", label: "Ωκεανός / Ocean" },
+  { id: "light", label: "Ανοιχτό / Light" },
 ];
 
-const AUTO_LOCK_OPTIONS = [
-  { value: 1, label: "1 λεπτό" },
-  { value: 5, label: "5 λεπτά" },
-  { value: 15, label: "15 λεπτά" },
-  { value: 0, label: "Ποτέ" },
+const LANGS = [
+  { id: "el", label: "Ελληνικά" },
+  { id: "en", label: "English" },
 ];
 
 export default function Settings({
@@ -20,6 +19,8 @@ export default function Settings({
   setTheme,
   autoLockMin,
   setAutoLockMin,
+  lang,
+  setLang,
   walletUnlocked,
   onClose,
 }: {
@@ -27,9 +28,12 @@ export default function Settings({
   setTheme: (t: string) => void;
   autoLockMin: number;
   setAutoLockMin: (n: number) => void;
+  lang: string;
+  setLang: (l: string) => void;
   walletUnlocked: boolean;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [showPinChange, setShowPinChange] = React.useState(false);
   const [oldPin, setOldPin] = React.useState("");
   const [newPin, setNewPin] = React.useState("");
@@ -37,17 +41,24 @@ export default function Settings({
   const [pinMsg, setPinMsg] = React.useState("");
   const [pinErr, setPinErr] = React.useState("");
 
+  const autoLockOptions = [
+    { value: 1, label: t("al_1") },
+    { value: 5, label: t("al_5") },
+    { value: 15, label: t("al_15") },
+    { value: 0, label: t("al_0") },
+  ];
+
   async function savePin() {
     setPinErr("");
     setPinMsg("");
     if (newPin.length < 6) {
-      setPinErr("Το νέο PIN πρέπει να έχει τουλάχιστον 6 χαρακτήρες.");
+      setPinErr(t("pin_short"));
       return;
     }
     setPinBusy(true);
     try {
       await changePin(oldPin, newPin);
-      setPinMsg("Το PIN άλλαξε ✓");
+      setPinMsg(t("pin_changed"));
       setOldPin("");
       setNewPin("");
       setTimeout(() => setShowPinChange(false), 1200);
@@ -61,32 +72,42 @@ export default function Settings({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h1>Ρυθμίσεις</h1>
+        <h1>{t("settings")}</h1>
 
-        <h2>Θέμα</h2>
+        {/* LANGUAGE — first setting */}
+        <h2>{t("language")}</h2>
+        <select value={lang} onChange={(e) => setLang(e.target.value)}>
+          {LANGS.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+
+        <h2>{t("theme")}</h2>
         <div className="theme-grid">
-          {THEMES.map((t) => (
+          {THEMES.map((th) => (
             <button
-              key={t.id}
-              data-theme={t.id}
-              className={theme === t.id ? "theme-opt active" : "theme-opt"}
-              onClick={() => setTheme(t.id)}
+              key={th.id}
+              data-theme={th.id}
+              className={theme === th.id ? "theme-opt active" : "theme-opt"}
+              onClick={() => setTheme(th.id)}
             >
               <span className="theme-swatch">
                 <span className="sw-bg" />
                 <span className="sw-accent" />
                 <span className="sw-text" />
               </span>
-              {t.label}
+              {th.label}
             </button>
           ))}
         </div>
 
-        <h2>Ασφάλεια</h2>
+        <h2>{t("security")}</h2>
         <div className="security-box">
-          <label className="hint">Αυτόματο κλείδωμα μετά από αδράνεια:</label>
+          <label className="hint">{t("autolock_label")}</label>
           <select value={autoLockMin} onChange={(e) => setAutoLockMin(Number(e.target.value))}>
-            {AUTO_LOCK_OPTIONS.map((o) => (
+            {autoLockOptions.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -96,38 +117,38 @@ export default function Settings({
           {walletUnlocked ? (
             !showPinChange ? (
               <button className="secondary" onClick={() => setShowPinChange(true)}>
-                🔐 Αλλαγή PIN
+                {t("change_pin")}
               </button>
             ) : (
               <div className="pin-modal">
                 <input
                   type="password"
-                  placeholder="Τρέχον PIN"
+                  placeholder={t("current_pin")}
                   value={oldPin}
                   onChange={(e) => setOldPin(e.target.value)}
                 />
                 <input
                   type="password"
-                  placeholder="Νέο PIN (min 6)"
+                  placeholder={t("new_pin_min")}
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value)}
                 />
                 <button disabled={pinBusy} onClick={savePin}>
-                  {pinBusy ? "..." : "Αποθήκευση"}
+                  {pinBusy ? "..." : t("save")}
                 </button>
                 <button className="secondary" onClick={() => setShowPinChange(false)}>
-                  Άκυρο
+                  {t("cancel")}
                 </button>
                 {pinMsg && <p className="hint" style={{ color: "var(--ok)" }}>{pinMsg}</p>}
                 {pinErr && <p className="error">{pinErr}</p>}
               </div>
             )
           ) : (
-            <p className="hint">Ξεκλείδωσε το wallet για να αλλάξεις PIN.</p>
+            <p className="hint">{t("unlock_first")}</p>
           )}
         </div>
 
-        <button onClick={onClose}>Κλείσιμο</button>
+        <button onClick={onClose}>{t("close")}</button>
       </div>
     </div>
   );

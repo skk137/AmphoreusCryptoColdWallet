@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import Logo from "../components/Logo";
+import { useT } from "../lib/i18n";
 import {
   Addresses,
   Balances,
@@ -21,6 +22,7 @@ import {
 
 // Auto-lock after this much inactivity. Any mouse/keyboard activity resets it.
 function CopyButton({ value }: { value: string }) {
+  const { t } = useT();
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -31,7 +33,7 @@ function CopyButton({ value }: { value: string }) {
         setTimeout(() => setCopied(false), 1500);
       }}
     >
-      {copied ? "Αντιγράφηκε ✓" : "Αντιγραφή"}
+      {copied ? t("copied") : t("copy")}
     </button>
   );
 }
@@ -62,6 +64,7 @@ function CoinIcon({ symbol, size = 18 }: { symbol: string; size?: number }) {
 }
 
 function AddressView({ value }: { value: string }) {
+  const { t } = useT();
   const [showQr, setShowQr] = useState(false);
   return (
     <div>
@@ -69,7 +72,7 @@ function AddressView({ value }: { value: string }) {
       <div style={{ display: "flex", gap: "0.5rem" }}>
         <CopyButton value={value} />
         <button className="copy" onClick={() => setShowQr((v) => !v)}>
-          {showQr ? "Κρύψε QR" : "QR"}
+          {showQr ? t("hide_qr") : t("qr")}
         </button>
       </div>
       {showQr && (
@@ -98,6 +101,7 @@ function SendForm({
   onSend: (to: string, baseUnits: number) => Promise<string>;
   onSent: () => void;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
@@ -111,11 +115,11 @@ function SendForm({
     setResult("");
     const parsed = parseFloat(amount.replace(",", "."));
     if (!to.trim()) {
-      setError("Συμπλήρωσε τη διεύθυνση παραλήπτη.");
+      setError(t("fill_recipient"));
       return;
     }
     if (!parsed || parsed <= 0) {
-      setError("Μη έγκυρο ποσό.");
+      setError(t("invalid_amount"));
       return;
     }
     const baseUnits = Math.round(parsed * Math.pow(10, decimals));
@@ -125,17 +129,15 @@ function SendForm({
     if (estimateFee) {
       setEstimating(true);
       try {
-        feeLine = `\nΕκτιμώμενο fee: ${await estimateFee(to.trim(), baseUnits)}\n`;
+        feeLine = `\n${t("est_fee", await estimateFee(to.trim(), baseUnits))}\n`;
       } catch (e) {
-        feeLine = `\n(δεν υπολογίστηκε το fee: ${e})\n`;
+        feeLine = `\n${t("fee_failed", String(e))}\n`;
       } finally {
         setEstimating(false);
       }
     }
 
-    const ok = window.confirm(
-      `Επιβεβαίωση αποστολής:\n\n${parsed} ${unit}\nπρος: ${to.trim()}\n${feeLine}\nΗ συναλλαγή δεν μπορεί να ανακληθεί. Συνέχεια;`
-    );
+    const ok = window.confirm(t("confirm_send", parsed, unit, to.trim(), feeLine));
     if (!ok) return;
     setSending(true);
     try {
@@ -154,35 +156,31 @@ function SendForm({
   if (!open) {
     return (
       <button className="copy" onClick={() => setOpen(true)}>
-        Αποστολή {label}
+        {t("send_x", label)}
       </button>
     );
   }
 
   return (
     <div className="send-form">
+      <input placeholder={t("recipient_ph")} value={to} onChange={(e) => setTo(e.target.value)} />
       <input
-        placeholder="Διεύθυνση παραλήπτη"
-        value={to}
-        onChange={(e) => setTo(e.target.value)}
-      />
-      <input
-        placeholder={`Ποσό σε ${unit}`}
+        placeholder={t("amount_in", unit)}
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
       />
       <button disabled={sending || estimating} onClick={handleSend}>
-        {estimating ? "Υπολογισμός fee..." : sending ? "Αποστολή..." : `Αποστολή ${unit}`}
+        {estimating ? t("calc_fee") : sending ? t("sending") : t("send_x", unit)}
       </button>
       <button className="copy" onClick={() => setOpen(false)}>
-        Άκυρο
+        {t("cancel")}
       </button>
       {result && (
         <p className="hint">
-          Εστάλη! ID συναλλαγής: <span className="address">{result}</span>
+          {t("sent_txid")} <span className="address">{result}</span>
           <br />
           <a href={`${explorerBase}${result}`} target="_blank" rel="noreferrer">
-            Προβολή συναλλαγής στο Chrome!
+            {t("view_tx")}
           </a>
         </p>
       )}
@@ -192,6 +190,7 @@ function SendForm({
 }
 
 function EvmSendForm({ b, onSent }: { b: EvmBalance; onSent: () => void }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [asset, setAsset] = useState("native"); // "native" | token symbol
   const [to, setTo] = useState("");
@@ -206,10 +205,10 @@ function EvmSendForm({ b, onSent }: { b: EvmBalance; onSent: () => void }) {
     setError("");
     setResult("");
     const amt = amount.trim().replace(",", ".");
-    if (!to.trim()) return setError("Συμπλήρωσε τη διεύθυνση παραλήπτη.");
-    if (!amt || parseFloat(amt) <= 0) return setError("Μη έγκυρο ποσό.");
+    if (!to.trim()) return setError(t("fill_recipient"));
+    if (!amt || parseFloat(amt) <= 0) return setError(t("invalid_amount"));
     const ok = window.confirm(
-      `Επιβεβαίωση αποστολής:\n\n${amt} ${assetLabel}\nδίκτυο: ${b.network}\nπρος: ${to.trim()}\n\nΤο fee πληρώνεται σε ${b.native_symbol} (gas).\nΗ συναλλαγή δεν ανακαλείται. Συνέχεια;`
+      t("confirm_send_evm", amt, assetLabel, b.network, to.trim(), b.native_symbol)
     );
     if (!ok) return;
     setSending(true);
@@ -229,7 +228,7 @@ function EvmSendForm({ b, onSent }: { b: EvmBalance; onSent: () => void }) {
   if (!open) {
     return (
       <button className="copy" onClick={() => setOpen(true)}>
-        Αποστολή ({b.network})
+        {t("send_on_net", b.network)}
       </button>
     );
   }
@@ -238,26 +237,26 @@ function EvmSendForm({ b, onSent }: { b: EvmBalance; onSent: () => void }) {
     <div className="send-form">
       <select value={asset} onChange={(e) => setAsset(e.target.value)}>
         <option value="native">{b.native_symbol} (native)</option>
-        {b.tokens.map((t) => (
-          <option key={t.symbol} value={t.symbol}>
-            {t.symbol}
+        {b.tokens.map((tok) => (
+          <option key={tok.symbol} value={tok.symbol}>
+            {tok.symbol}
           </option>
         ))}
       </select>
-      <input placeholder="Διεύθυνση παραλήπτη (0x...)" value={to} onChange={(e) => setTo(e.target.value)} />
-      <input placeholder={`Ποσό σε ${assetLabel}`} value={amount} onChange={(e) => setAmount(e.target.value)} />
+      <input placeholder={t("recipient_ph_evm")} value={to} onChange={(e) => setTo(e.target.value)} />
+      <input placeholder={t("amount_in", assetLabel)} value={amount} onChange={(e) => setAmount(e.target.value)} />
       <button disabled={sending} onClick={handleSend}>
-        {sending ? "Αποστολή..." : `Αποστολή ${assetLabel}`}
+        {sending ? t("sending") : t("send_x", assetLabel)}
       </button>
       <button className="copy" onClick={() => setOpen(false)}>
-        Άκυρο
+        {t("cancel")}
       </button>
       {result && (
         <p className="hint">
-          Εστάλη! <span className="address">{result}</span>
+          {t("sent_txid")} <span className="address">{result}</span>
           <br />
           <a href={`${b.explorer_tx}${result}`} target="_blank" rel="noreferrer">
-            Προβολή στο explorer
+            {t("view_tx")}
           </a>
         </p>
       )}
@@ -277,6 +276,7 @@ function HistoryCard({
   evm: string;
   evmBalances: EvmBalance[];
 }) {
+  const { t } = useT();
   const [txs, setTxs] = useState<HistoryTx[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -298,32 +298,32 @@ function HistoryCard({
   }, []);
 
   const statusLabel = (s: string) =>
-    s === "confirmed" ? "✓ επιβεβαιωμένη" : s === "failed" ? "✗ απέτυχε" : "… εκκρεμεί";
+    s === "confirmed" ? t("st_confirmed") : s === "failed" ? t("st_failed") : t("st_pending");
 
   return (
     <div className="card">
-      <h2>Ιστορικό συναλλαγών</h2>
+      <h2>{t("tx_history")}</h2>
       <button className="copy" onClick={load} disabled={loading}>
-        {loading ? "Φόρτωση..." : "Ανανέωση"}
+        {loading ? t("loading") : t("refresh")}
       </button>
-      {txs && txs.length === 0 && <p className="hint">Καμία συναλλαγή ακόμα.</p>}
-      {txs?.map((t) => (
-        <div key={t.txid} className="history-row">
-          <span className="chain-tag">{t.chain}</span>
-          <span className={`hist-status ${t.status}`}>{statusLabel(t.status)}</span>
+      {txs && txs.length === 0 && <p className="hint">{t("no_tx")}</p>}
+      {txs?.map((tx) => (
+        <div key={tx.txid} className="history-row">
+          <span className="chain-tag">{tx.chain}</span>
+          <span className={`hist-status ${tx.status}`}>{statusLabel(tx.status)}</span>
           <a
-            href={t.explorer_url}
+            href={tx.explorer_url}
             target="_blank"
             rel="noreferrer"
             className="address"
             style={{ fontSize: "0.7rem", margin: 0 }}
           >
-            {t.txid.slice(0, 18)}…
+            {tx.txid.slice(0, 18)}…
           </a>
         </div>
       ))}
       <p className="hint" style={{ marginTop: "0.7rem" }}>
-        Πλήρες EVM ιστορικό στο explorer:{" "}
+        {t("full_evm_history")}{" "}
         {evmBalances.map((b) => (
           <a
             key={b.network}
@@ -348,6 +348,7 @@ export default function Dashboard({
   onLocked: () => void;
   autoLockMin: number;
 }) {
+  const { t } = useT();
   const [addresses, setAddresses] = useState<Addresses | null>(null);
   const [balances, setBalances] = useState<Balances | null>(null);
   const [error, setError] = useState("");
@@ -436,13 +437,13 @@ export default function Dashboard({
 
       <nav className="tabs">
         <button className={tab === "home" ? "tab active" : "tab"} onClick={() => setTab("home")}>
-          Home
+          {t("home")}
         </button>
         <button
           className={tab === "history" ? "tab active" : "tab"}
           onClick={() => setTab("history")}
         >
-          Transaction History
+          {t("tx_history_tab")}
         </button>
       </nav>
 
@@ -455,14 +456,14 @@ export default function Dashboard({
             evmBalances={balances.evm}
           />
         ) : (
-          <p className="hint">Φόρτωση...</p>
+          <p className="hint">{t("loading")}</p>
         )
       ) : (
         <>
-      {addresses && <p className="badge">{addresses.network} — δοκιμαστικά δίκτυα </p>}
+      {addresses && <p className="badge">{addresses.network} — {t("testnets_badge")}</p>}
 
       <div className="card">
-        <h2>Bitcoin (testnet)</h2>
+        <h2>{t("card_btc")}</h2>
         {addresses ? (
           <>
             <AddressView value={addresses.btc} />
@@ -473,7 +474,7 @@ export default function Dashboard({
             {balances && balances.btc_pending_sats !== 0 && (
               <p className="hint">
                 {balances.btc_pending_sats > 0 ? "+" : ""}
-                {(balances.btc_pending_sats / 1e8).toFixed(8)} tBTC σε εκκρεμότητα (αναμονή επιβεβαίωσης)
+                {t("btc_pending", (balances.btc_pending_sats / 1e8).toFixed(8))}
               </p>
             )}
             <SendForm
@@ -490,12 +491,12 @@ export default function Dashboard({
             />
           </>
         ) : (
-          <p>{loading ? "Φόρτωση..." : "—"}</p>
+          <p>{loading ? t("loading") : t("dash")}</p>
         )}
       </div>
 
       <div className="card">
-        <h2>Solana (devnet)</h2>
+        <h2>{t("card_sol")}</h2>
         {addresses ? (
           <>
             <AddressView value={addresses.sol} />
@@ -529,19 +530,16 @@ export default function Dashboard({
             />
           </>
         ) : (
-          <p>{loading ? "Φόρτωση..." : "—"}</p>
+          <p>{loading ? t("loading") : t("dash")}</p>
         )}
       </div>
 
       <div className="card">
-        <h2>EVM (Polygon / Arbitrum)</h2>
+        <h2>{t("card_evm")}</h2>
         {addresses ? (
           <>
             <AddressView value={addresses.evm} />
-            <p className="hint">
-              Ίδια διεύθυνση για όλα τα EVM δίκτυα. Το USDC κάθε δικτύου είναι ξεχωριστό — πρόσεξε
-              πάντα σε ποιο chain λαμβάνεις/στέλνεις.
-            </p>
+            <p className="hint">{t("evm_same_addr")}</p>
             {balances ? (
               (() => {
                 const selectedNet = evmNet || balances.evm[0]?.network || "";
@@ -574,7 +572,7 @@ export default function Dashboard({
                           <span className="chain-tag">{b.network}</span>
                         </p>
                         <p className="hint" style={{ margin: "0.1rem 0 0" }}>
-                          {b.native_symbol} = native νόμισμα, πληρώνει τα fees
+                          {t("native_fees", b.native_symbol)}
                         </p>
                         <EvmSendForm b={b} onSent={load} />
                       </div>
@@ -583,16 +581,16 @@ export default function Dashboard({
                 );
               })()
             ) : (
-              <p>{loading ? "Φόρτωση..." : "—"}</p>
+              <p>{loading ? t("loading") : t("dash")}</p>
             )}
           </>
         ) : (
-          <p>{loading ? "Φόρτωση..." : "—"}</p>
+          <p>{loading ? t("loading") : t("dash")}</p>
         )}
       </div>
 
       <div className="card">
-        <h2>Litecoin (testnet)</h2>
+        <h2>{t("card_ltc")}</h2>
         {addresses ? (
           <>
             <AddressView value={addresses.ltc} />
@@ -610,12 +608,12 @@ export default function Dashboard({
             />
           </>
         ) : (
-          <p>{loading ? "Φόρτωση..." : "—"}</p>
+          <p>{loading ? t("loading") : t("dash")}</p>
         )}
       </div>
 
       <div className="card">
-        <h2>Dogecoin (mainnet · receive-only)</h2>
+        <h2>{t("card_doge")}</h2>
         {addresses ? (
           <>
             <AddressView value={addresses.doge} />
@@ -623,31 +621,28 @@ export default function Dashboard({
               <CoinIcon symbol="DOGE" />
               {balances ? `${(balances.doge_koinu / 1e8).toFixed(4)} DOGE` : loading ? "..." : "—"}
             </p>
-            <p className="hint">
-              Το Dogecoin δεν έχει testnet — αυτή είναι πραγματική mainnet διεύθυνση, μόνο για λήψη/εμφάνιση
-              (αποστολή δεν υποστηρίζεται ακόμα).
-            </p>
+            <p className="hint">{t("doge_note")}</p>
           </>
         ) : (
-          <p>{loading ? "Φόρτωση..." : "—"}</p>
+          <p>{loading ? t("loading") : t("dash")}</p>
         )}
       </div>
 
       {error && <p className="error">{error}</p>}
 
       <button disabled={loading} onClick={load}>
-        {loading ? "Φόρτωση..." : "Ανανέωση balances"}
+        {loading ? t("loading") : t("refresh_balances")}
       </button>
         </>
       )}
 
       <button disabled={busy} onClick={handleLock}>
-        {busy ? "..." : "Κλείδωμα"}
+        {busy ? "..." : t("lock")}
       </button>
 
       {autoLockMin > 0 && (
-        <div className="autolock" title={`Αυτόματο κλείδωμα σε ${lockMin}:${lockSec}`}>
-          <span className="autolock-label">κλείδωμα σε {lockMin}:{lockSec}</span>
+        <div className="autolock" title={t("lock_in", lockMin, lockSec)}>
+          <span className="autolock-label">{t("lock_in", lockMin, lockSec)}</span>
           <div className="autolock-bar">
             <div className="autolock-fill" style={{ width: `${lockProgress * 100}%` }} />
           </div>

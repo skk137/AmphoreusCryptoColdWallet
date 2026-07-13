@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import Logo from "../components/Logo";
+import { TFunc, useT } from "../lib/i18n";
 import {
   DriveInfo,
   createWallet,
@@ -10,7 +11,7 @@ import {
   unlockWallet,
 } from "../lib/tauri";
 
-function pinStrength(pin: string): { score: number; label: string; color: string } {
+function pinStrength(pin: string, t: TFunc): { score: number; label: string; color: string } {
     if (!pin) return { score: 0, label: "", color: "transparent" };
     let score = 0;
     if (pin.length >= 6) score++;
@@ -19,16 +20,17 @@ function pinStrength(pin: string): { score: number; label: string; color: string
     if (/[a-zα-ω]/.test(pin) && /[A-ZΑ-Ω]/.test(pin)) score++;
     if (/[0-9]/.test(pin)) score++;
     if (/[^a-zA-Z0-9α-ωΑ-Ω]/.test(pin)) score++;
-    // Κοινά/προβλέψιμα PIN μηδενίζουν
+    // Common/predictable PINs reset to zero
     if (/^(123456|12345678|password|qwerty|111111|000000)/i.test(pin)) score = 0;
 
-    if (score <= 2) return { score, label: "Αδύναμο", color: "#c0392b" };
-    if (score <= 4) return { score, label: "Μέτριο", color: "#e67e22" };
-    return { score, label: "Δυνατό", color: "#27ae60" };
+    if (score <= 2) return { score, label: t("pin_weak"), color: "#c0392b" };
+    if (score <= 4) return { score, label: t("pin_medium"), color: "#e67e22" };
+    return { score, label: t("pin_strong"), color: "#27ae60" };
 }
 
 function PinStrengthBar({ pin }: { pin: string }) {
-    const s = pinStrength(pin);
+    const { t } = useT();
+    const s = pinStrength(pin, t);
     if (!pin) return null;
     return (
         <div className="strength">
@@ -53,6 +55,7 @@ type Mode =
   | "unlock-pin";
 
 export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
+  const { t } = useT();
   const [mode, setMode] = useState<Mode>("pick-drive");
   const [drives, setDrives] = useState<DriveInfo[]>([]);
   const [drive, setDrive] = useState<DriveInfo | null>(null);
@@ -85,7 +88,7 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
       (i) => (verifyInputs[i] ?? "").trim().toLowerCase() === words[i]
     );
     if (!allOk) {
-      setError("Κάποια λέξη δεν ταιριάζει. Έλεγξε το backup σου.");
+      setError(t("word_mismatch"));
       return;
     }
     setPhrase("");
@@ -114,7 +117,7 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   async function pickLocalFolder() {
     setError("");
     try {
-      const selected = await open({ directory: true, title: "Επιλογή φακέλου για το wallet" });
+      const selected = await open({ directory: true, title: t("pick_folder_title") });
       if (typeof selected !== "string") return;
       pickDrive(await localFolderInfo(selected));
     } catch (e) {
@@ -125,11 +128,11 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   async function handleCreate() {
     if (!drive) return;
     if (pin.length < 6) {
-      setError("Το PIN πρέπει να έχει τουλάχιστον 6 χαρακτήρες.");
+      setError(t("pin_min6"));
       return;
     }
     if (pin !== pinConfirm) {
-      setError("Τα PIN δεν ταιριάζουν.");
+      setError(t("pin_mismatch"));
       return;
     }
     setBusy(true);
@@ -148,7 +151,7 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   async function handleImport() {
     if (!drive) return;
     if (pin.length < 6) {
-      setError("Το PIN πρέπει να έχει τουλάχιστον 6 χαρακτήρες.");
+      setError(t("pin_min6"));
       return;
     }
     setBusy(true);
@@ -183,27 +186,24 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
       <main className="container">
         <Logo />
         <p className="hint" style={{ textAlign: "center" }}>
-          Επίλεξε το USB stick που θα χρησιμοποιηθεί για το wallet.
+          {t("pick_usb")}
         </p>
-        <button onClick={refreshDrives}>Ανανέωση λίστας</button>
+        <button onClick={refreshDrives}>{t("refresh_list")}</button>
         <ul className="drive-list">
           {drives.map((d) => (
             <li key={d.mount_point}>
               <button onClick={() => pickDrive(d)}>
                 {d.name || d.mount_point} ({d.mount_point}) —{" "}
-                {d.has_wallet ? "υπάρχει wallet" : "άδειο"}
+                {d.has_wallet ? t("has_wallet") : t("empty")}
               </button>
             </li>
           ))}
-          {drives.length === 0 && <li>Δεν βρέθηκε αφαιρούμενο USB drive.</li>}
+          {drives.length === 0 && <li>{t("no_usb")}</li>}
         </ul>
         <button className="secondary" onClick={pickLocalFolder}>
-          Επιλογή τοπικού φακέλου (δεν προτείνεται)
+          {t("pick_local")}
         </button>
-        <p className="hint">
-          Η επιλογή τοπικού φακέλου, αποδομεί τη λογική του Cold Wallet — καθώς, το seed μένει στον ίδιο δίσκο με το λειτουργικό, και
-            συνεπώς εφόσον η συσκευή ειναι συνδεδεμένη στο διαδίκτυο, το wallet παραμένει hot και ευάλωτο σε Κυβερνοεπιθέσεις.
-        </p>
+        <p className="hint">{t("local_warning")}</p>
         {error && <p className="error">{error}</p>}
       </main>
     );
@@ -213,10 +213,10 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
     return (
       <main className="container">
         <h1>{drive?.mount_point}</h1>
-        <p>Δεν βρέθηκε wallet σε αυτό το drive.</p>
-        <button onClick={() => setMode("create-pin")}>Δημιουργία νέου wallet</button>
-        <button onClick={() => setMode("import")}>Επαναφορά από υπάρχον mnemonic</button>
-        <button onClick={() => setMode("pick-drive")}>Πίσω</button>
+        <p>{t("no_wallet_on_drive")}</p>
+        <button onClick={() => setMode("create-pin")}>{t("create_new")}</button>
+        <button onClick={() => setMode("import")}>{t("restore_existing")}</button>
+        <button onClick={() => setMode("pick-drive")}>{t("back")}</button>
         {error && <p className="error">{error}</p>}
       </main>
     );
@@ -225,18 +225,18 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
     if (mode === "create-pin") {
         return (
             <main className="container">
-                <h1>Ορισμός PIN</h1>
-                <p>Το PIN κρυπτογραφεί το seed που θα αποθηκευτεί στο USB.</p>
+                <h1>{t("set_pin")}</h1>
+                <p>{t("pin_encrypts")}</p>
                 <input type="password" placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
                 <PinStrengthBar pin={pin} />
                 <input
                     type="password"
-                    placeholder="Επιβεβαίωση PIN"
+                    placeholder={t("confirm_pin")}
                     value={pinConfirm}
                     onChange={(e) => setPinConfirm(e.target.value)}
                 />
                 <button disabled={busy} onClick={handleCreate}>
-                    {busy ? "..." : "Δημιουργία wallet"}
+                    {busy ? "..." : t("create_wallet_btn")}
                 </button>
                 {error && <p className="error">{error}</p>}
             </main>
@@ -246,12 +246,10 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   if (mode === "backup") {
     return (
       <main className="container">
-        <h1>Backup Phrase</h1>
-        <p className="warning">
-          Γράψε αυτή τη φράση σε χαρτί και φύλαξέ τη αλλού εκτός από το USB. Δεν θα ξαναφανεί.
-        </p>
+        <h1>{t("backup_phrase")}</h1>
+        <p className="warning">{t("backup_warning")}</p>
         <p className="mnemonic">{phrase}</p>
-        <button onClick={startVerify}>Την έγραψα, συνέχεια</button>
+        <button onClick={startVerify}>{t("wrote_it")}</button>
       </main>
     );
   }
@@ -260,21 +258,19 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
     const words = phrase.trim().split(/\s+/);
     return (
       <main className="container">
-        <h1>Επιβεβαίωση backup</h1>
-        <p className="hint">
-          Για να σιγουρευτούμε ότι έγραψες σωστά τη φράση, πληκτρολόγησε τις λέξεις που ζητάει.
-        </p>
+        <h1>{t("verify_backup_title")}</h1>
+        <p className="hint">{t("verify_hint")}</p>
         {verifyIdx.map((i) => (
           <input
             key={i}
-            placeholder={`Λέξη #${i + 1}`}
+            placeholder={t("word_n", i + 1)}
             value={verifyInputs[i] ?? ""}
             onChange={(e) => setVerifyInputs({ ...verifyInputs, [i]: e.target.value })}
           />
         ))}
-        <button onClick={checkVerify}>Επιβεβαίωση</button>
+        <button onClick={checkVerify}>{t("verify")}</button>
         <button className="secondary" onClick={() => setMode("backup")}>
-          Πίσω να τη δω ξανά
+          {t("back_to_see")}
         </button>
         <button
           className="secondary"
@@ -283,11 +279,10 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
             onUnlocked();
           }}
         >
-          Skip (μόνο για δοκιμή — μη το κάνεις με πραγματικά χρήματα)
+          {t("skip_test")}
         </button>
         {error && <p className="error">{error}</p>}
-        {/* words referenced above via checkVerify closure */}
-        {words.length === 0 && <p className="error">Λείπει η φράση.</p>}
+        {words.length === 0 && <p className="error">{t("missing_phrase")}</p>}
       </main>
     );
   }
@@ -295,17 +290,17 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   if (mode === "import") {
     return (
       <main className="container">
-        <h1>Επαναφορά wallet</h1>
+        <h1>{t("restore_wallet")}</h1>
         <textarea
-          placeholder="24-word mnemonic"
+          placeholder={t("mnemonic_ph")}
           value={importPhrase}
           onChange={(e) => setImportPhrase(e.target.value)}
         />
-        <input type="password" placeholder="Νέο PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
+        <input type="password" placeholder={t("new_pin")} value={pin} onChange={(e) => setPin(e.target.value)} />
         <button disabled={busy} onClick={handleImport}>
-          {busy ? "..." : "Επαναφορά"}
+          {busy ? "..." : t("restore_btn")}
         </button>
-        <button onClick={() => setMode("choose-action")}>Πίσω</button>
+        <button onClick={() => setMode("choose-action")}>{t("back")}</button>
         {error && <p className="error">{error}</p>}
       </main>
     );
@@ -314,13 +309,13 @@ export default function Onboarding({ onUnlocked }: { onUnlocked: () => void }) {
   // mode === "unlock-pin"
   return (
     <main className="container">
-      <h1>Ξεκλείδωμα wallet</h1>
+      <h1>{t("unlock_wallet")}</h1>
       <p>{drive?.mount_point}</p>
       <input type="password" placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
       <button disabled={busy} onClick={handleUnlock}>
-        {busy ? "..." : "Ξεκλείδωμα"}
+        {busy ? "..." : t("unlock_btn")}
       </button>
-      <button onClick={() => setMode("pick-drive")}>Πίσω</button>
+      <button onClick={() => setMode("pick-drive")}>{t("back")}</button>
       {error && <p className="error">{error}</p>}
     </main>
   );
